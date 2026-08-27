@@ -160,9 +160,13 @@ def test_missing_snapshot_is_unverifiable_not_a_pass(tmp_path, make_obs):
     assert report.matched == 0
     assert len(report.unverifiable) == 1
     assert "missing" in report.unverifiable[0].detail
-    # A value that cannot be checked must not be reported as reproduced, but it
-    # is also not evidence of tampering, so it does not fail the run.
-    assert report.ok
+
+    # A value whose inputs are gone must never be reported as reproduced, and
+    # it fails the run. The promise is that every published value can be
+    # rebuilt from the archive; a missing snapshot breaks that promise whether
+    # or not anything was tampered with.
+    assert not report.ok
+    assert len(report.dangling) == 1
 
 
 def test_superseded_is_stamped_without_disturbing_prior_rows(tmp_path, make_obs):
@@ -270,3 +274,40 @@ def test_publication_and_verification_share_one_preparation_path(tmp_path, make_
     report = verify(tmp_path)
     assert report.ok, [m.detail for m in report.mismatches]
     assert report.matched == 1
+
+
+def test_a_superseded_revision_losing_its_inputs_is_caught(tmp_path, make_obs):
+    """Integrity across every revision, not just the live one.
+
+    verify only recomputes the current value, so without a separate sweep a
+    superseded revision's snapshot could be deleted and nothing would notice.
+    A superseded value is still a published value; someone may have settled
+    against it, and its inputs have to stay on file.
+    """
+    morning = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
+    evening = datetime(2026, 8, 27, 20, 5, tzinfo=timezone.utc)
+
+    first, _ = publish_into_archive(
+        tmp_path, build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}), morning
+    )
+    publish_into_archive(
+        tmp_path,
+        build(make_obs, {"a": 4.0, "b": 4.1, "c": 3.9, "d": 4.0}),
+        evening,
+        revision=1,
+        reason="correction",
+    )
+
+    # The live revision still reproduces, so the recompute path stays clean.
+    assert verify(tmp_path).ok
+
+    first.unlink()
+    report = verify(tmp_path)
+
+    assert not report.ok
+    assert len(report.dangling) == 1
+    assert "rev 0" in report.dangling[0]
+    # The live value is untouched and still reproduces; only the archive is
+    # incomplete, and the distinction is visible in the report.
+    assert report.matched == 1
+    assert not report.mismatches

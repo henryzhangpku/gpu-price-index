@@ -52,6 +52,7 @@ uv run gpuidx as-of GIX-H100 2026-08-27 2026-08-27T20:15:00Z
 uv run gpuidx rebuild                      # restore the database from the archive
 uv run gpuidx verify                       # recompute every value from its inputs
 uv run gpuidx calibrate                    # test the adjustment factors against venue pricing
+uv run gpuidx forward --spot 3.05          # what committed-use discounts do and don't imply
 ```
 
 `audit` is the one worth looking at. It shows every contributing provider,
@@ -166,6 +167,15 @@ Nothing about the shape of the payload tells you which kind you have.
 an identical H100 fixing but moved A100 8%, purely because contributing
 providers went 9 to 8. Nothing about the market changed. A fixed capture window
 is a prerequisite before any daily delta is read as signal.
+
+**There is no GPU forward curve, and the usual proxy does not work.** A
+GPU-hour is not storable, so no-arbitrage pins nothing and `F(T) = E[S(T)] +
+risk premium` — compute prices like electricity, not like gold. Inverting
+committed-use discounts for an implied decline gives 35–68% per year depending
+on how much you attribute to lock-in, and AWS's own 1-year and 3-year discounts
+imply rates 23 points apart. Those numbers are not a forecast; they are proof
+the proxy is wrong. `gpuidx forward` exists to size that gap, not to paper over
+it with a fitted curve.
 
 **Nothing here is a transaction.** Every input is an offer or a rate card. That
 gap does not close with better statistics — it closes with commercial

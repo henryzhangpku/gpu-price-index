@@ -17,6 +17,14 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .calibrate import compare_to_schedule, observed_ratios
+from .forward import (
+    annual_decline_pct,
+    consistency_check,
+    implied_decline,
+    implied_forward_level,
+    load_committed_use,
+    sensitivity,
+)
 from .pipeline import run_daily
 from .reproduce import coverage, rebuild, verify
 from .spec import CONTRACTS, DEFAULT_GATES
@@ -311,12 +319,15 @@ def verify_cmd(
             f"checked      {report.checked}\n"
             f"reproduced   {report.matched}\n"
             f"mismatched   {len(report.mismatches)}\n"
-            f"unverifiable {len(report.unverifiable)}",
+            f"unverifiable {len(report.unverifiable)}\n"
+            f"dangling     {len(report.dangling)}",
             title="verify",
             expand=False,
         )
     )
 
+    for note in report.dangling:
+        console.print(f"  [bold red]dangling[/] {note}")
     for note in report.methodology_drift:
         console.print(f"  [yellow]methodology[/] {note}")
     for item in report.unverifiable:
@@ -383,6 +394,89 @@ def calibrate_cmd() -> None:
         "\nA constant ratio across every SKU is a pricing policy, not a market "
         "spread. Only a dispersed ratio is evidence."
     )
+
+
+@app.command("forward")
+def forward_cmd(
+    spot: float = typer.Option(3.05, help="Current spot level, USD per GPU-hour"),
+    db: Optional[Path] = typer.Option(None),
+) -> None:
+    """Invert committed-use discounts for an implied expected price decline.
+
+    A GPU-hour is not storable, so there is no cost-of-carry relation and no
+    forward can be bootstrapped from spot. What can be observed is the
+    committed-use discount, which bundles expected decline together with the
+    price of lock-in. The two are not separately identified, so the output
+    here is a sensitivity range, not a point estimate.
+    """
+    points = load_committed_use()
+    if not points:
+        console.print("[yellow]no committed-use data in data/committed_use.json[/]")
+        raise typer.Exit(1)
+
+    console.print(
+        Panel(
+            "A GPU-hour cannot be stored, so F(T) = E[S(T)] + risk premium, with no\n"
+            "arbitrage relation to pin it down. Compute prices like electricity, not\n"
+            "like gold. Every number below is an expectation conditional on an\n"
+            "assumption that nothing in public data identifies.",
+            title="why there is no forward curve here",
+            expand=False,
+        )
+    )
+
+    table = Table(title="implied annual decline by assumed risk premium", header_style="bold")
+    table.add_column("vendor")
+    table.add_column("tenor", justify="right")
+    table.add_column("of on-demand", justify="right")
+    for premium in (0.0, 0.05, 0.10, 0.15, 0.20):
+        table.add_column(f"pi={premium:.0%}", justify="right")
+
+    for point in sorted(points, key=lambda p: (p.vendor, p.tenor_years)):
+        cells = [
+            f"{row['annual_decline']:.1%}" for row in sensitivity(point)
+        ]
+        table.add_row(
+            point.vendor,
+            f"{point.tenor_years:.0f}y",
+            f"{point.price_ratio:.0%}",
+            *cells,
+        )
+    console.print(table)
+    console.print(
+        "[dim]pi is the share of the discount attributed to lock-in and price "
+        "certainty rather than to expected decline.[/]"
+    )
+
+    console.print()
+    projection = Table(title=f"expected level from spot ${spot:.2f}/GPU-hr", header_style="bold")
+    for column in ("assumption", "1 year", "2 years", "3 years"):
+        projection.add_column(column, justify="left" if column == "assumption" else "right")
+    for premium in (0.0, 0.10, 0.20):
+        rate = implied_decline(0.60, 1.0, premium)
+        projection.add_row(
+            f"AWS 1y discount, pi={premium:.0%}  ({annual_decline_pct(rate):.1%}/yr)",
+            *[f"${implied_forward_level(spot, rate, h):.2f}" for h in (1, 2, 3)],
+        )
+    console.print(projection)
+
+    rows = consistency_check(points)
+    if rows:
+        console.print()
+        console.print("[bold]term-structure consistency[/]")
+        for row in rows:
+            tenors = ", ".join(f"{t:.0f}y" for t in row["tenors"])
+            implied = ", ".join(f"{annual_decline_pct(r):.1%}" for r in row["implied"])
+            verdict = "[green]consistent[/]" if row["consistent"] else "[yellow]inconsistent[/]"
+            console.print(
+                f"  {row['vendor']:8} {tenors} imply {implied} -> {verdict} "
+                f"(spread {row['spread']:.3f})"
+            )
+        console.print(
+            "[dim]Under a constant decline rate one tenor determines the other. A wide\n"
+            "spread means lock-in cost grows with term, which it plainly does, so the\n"
+            "constant-rate model is the floor of a more honest term-dependent one.[/]"
+        )
 
 
 if __name__ == "__main__":
