@@ -190,7 +190,14 @@ becomes undefined. The implementation returned without screening anything, and
 four providers at $3.00 alongside one at $1,000,000 published **$200,002**. The
 failure needed the market to *agree*, which is also when one extreme quote does
 the most damage. Realistic-looking test data never found it; deliberately
-hostile data found it immediately. Full account in
+hostile data found it immediately.
+
+The fix is one line of behaviour; the actual response is
+[`tests/test_properties.py`](tests/test_properties.py), which generates markets
+instead of choosing them and asserts ten invariants over all of them. Reverted
+against the original screen, two of those properties fail and Hypothesis
+minimises the failure to four providers at $0.25 and one adversary at 100x.
+They also caught a mis-stated invariant of my own. Full account in
 [docs/FINDINGS.md](docs/FINDINGS.md) section 7.
 
 **Nothing here is a transaction.** Every input is an offer or a rate card. That
@@ -203,9 +210,16 @@ agreements under which venues report executed volume.
 uv run pytest
 ```
 
-28 tests. The ones that matter are in `test_estimator.py` — they encode the
+78 tests, in two layers. The ones that matter are in `test_estimator.py` — they encode the
 adversarial cases: a provider flooding the feed with forty cheap SKUs, a
 single absurd offer trying to drag the median, a venue trying to dominate a
 thin index. And `test_store.py`, which asserts the property everything else
 rests on: a corrected value never destroys what the tape said before the
 correction.
+
+`test_properties.py` is the layer that matters more. Hand-written cases only
+cover the situations their author imagined, and every one of mine looked like
+a plausible market — which is precisely how the MAD-zero defect survived. The
+property tests generate the market instead, including the shapes nobody writes
+down by hand: exact ties across every provider, prices spanning six orders of
+magnitude, and adversaries quoting anything at all.
