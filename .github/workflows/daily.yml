@@ -1,0 +1,92 @@
+name: daily fixing
+
+# Publishes one fixing per day and commits the durable record.
+#
+# The database is never committed -- it is derived state, rebuilt from the
+# archive at the start of every run. What gets committed is the immutable
+# snapshot of raw inputs and the append-only tape, which together make every
+# published value reconstructible.
+
+on:
+  schedule:
+    # 14:05 UTC. Deliberately off the hour: every scheduled workflow on GitHub
+    # asking for :00 lands in the same queue, and a benchmark that wants a
+    # consistent capture time should not compete for it.
+    - cron: "5 14 * * *"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Revision reason, if correcting an existing fixing"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  # Never let two fixings run at once: both would append to the same tape.
+  group: daily-fixing
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --frozen
+
+      - name: Run tests
+        # A methodology change that breaks its own tests must not reach the
+        # tape. The gates protect against bad data; this protects against bad code.
+        run: uv run pytest -q
+
+      - name: Rebuild working state from the archive
+        # Restores prior runs and fixings so the level-shift, provider-dropout,
+        # and stalled-feed checks have the history they need.
+        run: uv run gpuidx rebuild
+
+      - name: Publish today's fixing
+        env:
+          REASON: ${{ inputs.reason }}
+        run: |
+          if [ -n "$REASON" ]; then
+            uv run gpuidx publish --reason "$REASON"
+          else
+            uv run gpuidx publish
+          fi
+
+      - name: Verify the series still reproduces from its archive
+        # Fails the run if any published value can no longer be derived from
+        # its archived inputs.
+        run: uv run gpuidx verify
+
+      - name: Commit the durable record
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add snapshots series
+          if git diff --staged --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "Fixing for $(date -u +%F)"
+          git push
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '## Fixing'
+            echo '```'
+            uv run gpuidx show GIX-H100 --limit 10 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

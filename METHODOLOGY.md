@@ -25,7 +25,7 @@ money on it, and resistant to a participant who wants it somewhere else.
 |---|---|---|
 | `GIX-H100` | NVIDIA H100 SXM 80GB | published |
 | `GIX-H200` | NVIDIA H200 SXM 141GB | published |
-| `GIX-A100` | NVIDIA A100 SXM 80GB | withheld — dispersion above ceiling |
+| `GIX-A100` | NVIDIA A100 SXM 80GB | unstable — flickers across the dispersion gate |
 | `GIX-B200` | NVIDIA B200 SXM 180GB | published |
 | `GIX-MI300X` | AMD MI300X 192GB | withheld — insufficient providers |
 
@@ -242,7 +242,18 @@ marketing document.
 6. **Correlated source failure.** One aggregator supplies most of the provider
    breadth. See section 6.
 
-7. **The outlier screen can conceal a bad input.** During development an
+7. **The dispersion gate is not stable at current provider counts.** Two runs
+   an hour apart on an unmoved market produced dispersion of 0.560 (10
+   providers, withheld) and 0.365 (9 providers, published). MAD over roughly
+   ten points is a coarse order statistic, and adding one mid-range provider
+   shifts both the median and the MAD enough to flip the decision. The gate is
+   correct in intent and too twitchy in practice. Remedies — hysteresis, an
+   N-day persistence rule, or a dispersion estimate pooled over a trailing
+   window — all require a real time series to calibrate, so this is recorded
+   as an open defect rather than patched with a guessed constant. See
+   [docs/FINDINGS.md](docs/FINDINGS.md) section 2.
+
+8. **The outlier screen can conceal a bad input.** During development an
    incorrect AWS figure was extreme enough to be screened as an outlier, which
    tightened the surviving distribution and let `GIX-A100` publish at
    dispersion 0.365. Correcting the input to its true value put it inside the
