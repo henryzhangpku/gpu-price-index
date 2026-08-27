@@ -55,10 +55,14 @@ class VerifyReport:
     mismatches: list[Mismatch] = field(default_factory=list)
     unverifiable: list[Mismatch] = field(default_factory=list)
     methodology_drift: list[str] = field(default_factory=list)
+    #: Tape rows naming a snapshot that is no longer on disk. Superseded
+    #: revisions are not recomputed, so without this check their inputs could
+    #: quietly disappear and nothing would notice.
+    dangling: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return not self.mismatches and not self.methodology_drift
+        return not self.mismatches and not self.methodology_drift and not self.dangling
 
 
 def rebuild(
@@ -139,6 +143,17 @@ def verify(root: Path, gates: Gates | None = None) -> VerifyReport:
     # value against a set of observations that never existed together.
     available = {path.name: path for path in list_snapshots(root)}
     cache: dict[str, list] = {}
+
+    # Integrity sweep across *every* revision, not just the live ones. A
+    # superseded value is still a published value: someone may have settled
+    # against it, and its inputs have to remain on file.
+    for row in read_tape(root):
+        name = (row.get("snapshot") or "").strip()
+        if name and name not in available:
+            report.dangling.append(
+                f"{row['index_code']} {row['index_date']} rev {row['revision']} "
+                f"names missing snapshot {name}"
+            )
 
     for (index_code, index_date), row in sorted(live_tape_values(root).items()):
         report.checked += 1

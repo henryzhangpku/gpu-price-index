@@ -157,7 +157,64 @@ coverage faces exactly this temptation, and the failure is invisible to
 consumers unless the methodology discloses provider counts per index. This one
 publishes them on every value.
 
-## 6. Nothing here is a transaction
+## 6. There is no GPU forward curve, and the usual proxy does not work
+
+A GPU-hour cannot be stored. You cannot buy one today, hold it, and deliver it
+in six months; an unused hour is gone. That removes the machinery most
+commodity forward pricing rests on. For a storable good the forward is pinned
+by arbitrage — buy spot, finance, store, deliver. Here there is no such trade,
+so no-arbitrage says nothing and
+
+    F(T) = E[S(T)] + risk premium
+
+with nothing to pin either term. Compute belongs with electricity, weather, and
+freight rather than with gold and crude. Term structure is driven by supply-side
+physics — fab and HBM capacity, datacentre power, and above all the
+next-generation release cadence — not by carry. A B200 ramp mechanically
+depresses the H100 forward curve in a way no storage-cost model would predict.
+
+The obvious proxy is the committed-use discount: vendors sell one- and
+three-year commitments below on-demand, and that discount is a real price.
+Inverting it for an implied constant decline rate gives:
+
+| Vendor | Tenor | Price vs on-demand | π=0% | π=10% | π=20% |
+|---|---|---|---|---|---|
+| AWS | 1y | 60% | 67.6% | 58.3% | 45.4% |
+| AWS | 3y | 40% | 52.5% | 47.3% | 41.2% |
+| GCP | 1y | 63% | 63.5% | 53.3% | 39.3% |
+| GCP | 3y | 45% | 46.6% | 41.2% | 34.9% |
+
+π is the share of the discount attributed to lock-in and price certainty
+rather than to expectations. **Every cell is implausible.** Taken literally,
+the mildest reading has GPU spot falling 35% a year and the most aggressive
+has it falling 68%; projecting $3.05/GPU-hr forward at the naive rate gives
+$0.10 in three years.
+
+That is not a forecast. It is a proof that the proxy is wrong, and it fails in
+two identifiable ways:
+
+1. **The discount is not mostly expectation.** It bundles lock-in, the vendor's
+   value from guaranteed utilisation, and the buyer's price of certainty. One
+   observed discount is one equation in four unknowns, and no public data
+   separates them.
+2. **The tenors disagree.** Under a constant decline rate, a vendor's one-year
+   discount determines its three-year one. AWS's imply 58.3% and 47.3%; GCP's
+   imply 53.3% and 41.2%. A spread of 0.23 in both cases says lock-in cost
+   grows with term — which it obviously does — so a constant-rate model is the
+   floor of a more honest term-dependent one.
+
+There is a third problem the arithmetic cannot see: AWS Savings Plans and GCP
+CUDs are *general compute* instruments, not GPU-specific. Using them as GPU
+term structure assumes the commitment economics of a GPU node match those of a
+web server, which is not obviously true and is probably false.
+
+The honest conclusion is that a GPU forward curve cannot be derived from
+public data at all. It has to be observed, which requires either a liquid
+futures market or commercial access to bilateral term deals. `gpuidx forward`
+exists to make the size of that gap explicit rather than to paper over it with
+a fitted curve.
+
+## 7. Nothing here is a transaction
 
 Every input is an offer or a rate card. Vast.ai offers are executable — a buyer
 could transact against them right now — but nobody in this data set observes a
