@@ -23,7 +23,8 @@ from gpuidx.archive import (
     write_snapshot,
 )
 from gpuidx.estimator import estimate
-from gpuidx.normalize import normalize
+from gpuidx.models import Commitment
+from gpuidx.normalize import prepare_quotes
 from gpuidx.reproduce import rebuild, verify
 from gpuidx.spec import Gates
 from gpuidx.store import Store
@@ -43,8 +44,11 @@ def build(make_obs, prices):
 def publish_into_archive(root, observations, captured_at, revision=0, reason=""):
     """Mirror what the pipeline does, without collecting from the network."""
     path = write_snapshot(root, observations, captured_at=captured_at)
-    quotes = [normalize(o) for o in observations]
-    est = estimate("GIX-H100", quotes, GATES)
+    # Deliberately the same entry point the pipeline uses. When publication
+    # and verification went through different functions, adding a screen to
+    # one silently made every value irreproducible from its own archive.
+    quotes, _ = prepare_quotes(observations)
+    est = estimate("GIX-H100", [q for q in quotes if q.index_code == "GIX-H100"], GATES)
     append_to_tape(
         root,
         [
@@ -228,3 +232,41 @@ def test_live_tape_values_returns_the_highest_revision(tmp_path, make_obs):
     live = live_tape_values(tmp_path)
     assert len(live) == 1
     assert int(live[("GIX-H100", DAY)]["revision"]) == 2
+
+
+def test_publication_and_verification_share_one_preparation_path(tmp_path, make_obs):
+    """Regression: a screen added to publication must reach verification too.
+
+    The archive contains an administered venue whose quotes the pipeline
+    excludes. If verification did not apply the same exclusion, it would
+    recompute from a larger input set and the value would not reproduce --
+    which is exactly what happened when these were two code paths.
+    """
+    captured = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
+
+    honest = build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0})
+    administered = []
+    for i, model in enumerate(["H100 SXM", "H200", "A100 SXM4", "B200", "RTX 4090", "L40S", "A40"]):
+        administered.append(
+            make_obs(source="policyvendor", gpu_model=model, price_per_gpu=4.0, sku=f"pv-{i}-od")
+        )
+        administered.append(
+            make_obs(
+                source="policyvendor",
+                gpu_model=model,
+                price_per_gpu=2.0,
+                commitment=Commitment.SPOT,
+                sku=f"pv-{i}-spot",
+            )
+        )
+
+    _, est = publish_into_archive(tmp_path, honest + administered, captured)
+
+    # The exclusion actually bit: the administered venue's spot quotes are gone.
+    assert "policyvendor" in {p.provider for p in est.providers}
+    quotes, flags = prepare_quotes(honest + administered)
+    assert any(f.code == "administered_pricing_excluded" for f in flags)
+
+    report = verify(tmp_path)
+    assert report.ok, [m.detail for m in report.mismatches]
+    assert report.matched == 1

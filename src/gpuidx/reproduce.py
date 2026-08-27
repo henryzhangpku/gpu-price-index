@@ -30,7 +30,7 @@ from pathlib import Path
 from . import METHODOLOGY_VERSION
 from .archive import list_snapshots, live_tape_values, read_snapshot, read_tape
 from .estimator import estimate
-from .normalize import normalize_all
+from .normalize import prepare_quotes
 from .spec import CONTRACTS, DEFAULT_GATES, Gates
 from .store import Store
 
@@ -90,7 +90,7 @@ def rebuild(
 
         run_id = store.start_run(per_provider)
         store.record_observations(run_id, archived.observations)
-        quotes, _ = normalize_all(archived.observations)
+        quotes, _ = prepare_quotes(archived.observations)
         store.record_quotes(run_id, quotes)
 
     _restore_tape(store, root)
@@ -178,7 +178,7 @@ def verify(root: Path, gates: Gates | None = None) -> VerifyReport:
             cache[name] = read_snapshot(available[name]).observations
         observations = cache[name]
 
-        quotes, _ = normalize_all(observations)
+        quotes, _ = prepare_quotes(observations)
         relevant = [q for q in quotes if q.index_code == index_code]
         recomputed = estimate(index_code, relevant, gates)
 

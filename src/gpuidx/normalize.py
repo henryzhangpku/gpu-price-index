@@ -178,10 +178,33 @@ def normalize(obs: RawObservation) -> NormalizedQuote:
     )
 
 
+def prepare_quotes(
+    observations: list[RawObservation],
+) -> tuple[list[NormalizedQuote], list[QualityFlag]]:
+    """The single path from raw observations to index inputs.
+
+    Both publication and verification must go through here. When they were
+    two code paths, adding a filter to one silently made every published value
+    irreproducible from its own archive -- which ``gpuidx verify`` caught, but
+    only because the check existed. One function removes the possibility.
+    """
+    # Imported here rather than at module scope: calibrate imports spec, and
+    # spec imports models, so a top-level import would close a cycle.
+    from .calibrate import drop_administered
+
+    informative, administered_flags = drop_administered(observations)
+    quotes, rejection_flags = normalize_all(informative)
+    return quotes, administered_flags + rejection_flags
+
+
 def normalize_all(
     observations: list[RawObservation],
 ) -> tuple[list[NormalizedQuote], list[QualityFlag]]:
-    """Normalise a batch, summarising rejections rather than listing each one."""
+    """Normalise a batch, summarising rejections rather than listing each one.
+
+    Prefer ``prepare_quotes`` -- this is the normalisation step alone and does
+    not apply the pre-normalisation screens the pipeline relies on.
+    """
     quotes: list[NormalizedQuote] = []
     rejections: dict[str, int] = {}
 
