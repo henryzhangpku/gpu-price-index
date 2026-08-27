@@ -4,48 +4,51 @@
     "sku": "p5.48xlarge",
     "gpu_model": "H100 SXM",
     "gpu_count": 8,
-    "usd_per_hour_total": 98.32,
+    "usd_per_hour_total": 55.04,
     "commitment": "on_demand",
     "form_factor": "sxm",
     "interconnect": "nvlink",
     "vram_gb": 80,
     "region": "us-east-1",
     "as_of": "2026-08-27",
-    "verified": false,
-    "source_url": "https://aws.amazon.com/ec2/instance-types/p5/",
-    "note": "Indicative on-demand list rate. Re-verify against the vendor pricing page before production use."
+    "verified": true,
+    "source_type": "vendor_pricing_feed",
+    "source_url": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20(N.%20Virginia)/Linux/index.json",
+    "note": "Read from the feed backing the AWS EC2 pricing page. $6.88 per GPU-hour."
   },
   {
     "vendor": "aws",
     "sku": "p4de.24xlarge",
     "gpu_model": "A100 SXM4 80GB",
     "gpu_count": 8,
-    "usd_per_hour_total": 40.96,
+    "usd_per_hour_total": 27.4471,
     "commitment": "on_demand",
     "form_factor": "sxm",
     "interconnect": "nvlink",
     "vram_gb": 80,
     "region": "us-east-1",
     "as_of": "2026-08-27",
-    "verified": false,
-    "source_url": "https://aws.amazon.com/ec2/instance-types/p4/",
-    "note": "Indicative on-demand list rate. Re-verify before production use."
+    "verified": true,
+    "source_type": "vendor_pricing_feed",
+    "source_url": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20(N.%20Virginia)/Linux/index.json",
+    "note": "Read from the feed backing the AWS EC2 pricing page. $3.43 per GPU-hour."
   },
   {
     "vendor": "gcp",
     "sku": "a3-highgpu-8g",
     "gpu_model": "H100 SXM",
     "gpu_count": 8,
-    "usd_per_hour_total": 88.25,
+    "usd_per_hour_total": 87.84,
     "commitment": "on_demand",
     "form_factor": "sxm",
     "interconnect": "nvlink",
     "vram_gb": 80,
     "region": "us-central1",
     "as_of": "2026-08-27",
-    "verified": false,
+    "verified": true,
+    "source_type": "secondary_aggregator",
     "source_url": "https://cloud.google.com/compute/gpus-pricing",
-    "note": "Indicative on-demand list rate. Re-verify before production use."
+    "note": "Cross-checked against third-party pricing aggregators; GCP publishes no unauthenticated machine-type feed. $10.98 per GPU-hour. Lower confidence than the AWS entries."
   },
   {
     "vendor": "azure",
@@ -59,16 +62,17 @@
     "vram_gb": 80,
     "region": "eastus",
     "as_of": "2026-08-27",
-    "verified": false,
+    "verified": true,
+    "source_type": "secondary_aggregator",
     "source_url": "https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/",
-    "note": "Indicative on-demand list rate. Re-verify before production use."
+    "note": "Cross-checked against third-party pricing aggregators. $12.29 per GPU-hour. Lower confidence than the AWS entries."
   },
   {
-    "vendor": "coreweave",
-    "sku": "HGX-H100-8x",
+    "vendor": "example-stale-vendor",
+    "sku": "SYNTHETIC-H100-8x",
     "gpu_model": "H100 SXM",
     "gpu_count": 8,
-    "usd_per_hour_total": 49.24,
+    "usd_per_hour_total": 40.0,
     "commitment": "on_demand",
     "form_factor": "sxm",
     "interconnect": "infiniband",
@@ -76,7 +80,8 @@
     "region": "US",
     "as_of": "2026-06-01",
     "verified": false,
-    "source_url": "https://www.coreweave.com/pricing",
-    "note": "Deliberately stale example entry: exercises the staleness gate and should be dropped at collection."
+    "source_type": "synthetic_fixture",
+    "source_url": null,
+    "note": "Not a real vendor or price. A synthetic fixture that exercises the 45-day staleness gate, so a live run demonstrates the drop. Deliberately attributed to no real company."
   }
 ]

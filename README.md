@@ -24,19 +24,21 @@ Live output from a real run:
 ```
 +----------------- collection ------------------+
 | run 1 for 2026-08-27                          |
-| 562 raw observations -> 174 normalised quotes |
+| 577 raw observations -> 163 normalised quotes |
 +-----------------------------------------------+
                               daily fixing
 +---------------------------------------------------------------------+
 | index      |  value | prov | obs |  disp | status                    |
 |------------+--------+------+-----+-------+---------------------------|
-| GIX-H100   | $2.954 |   11 |  50 | 0.375 | published                 |
-| GIX-H200   | $3.540 |    7 |  23 | 0.398 | published                 |
-| GIX-A100   | $2.014 |    9 |  58 | 0.365 | published                 |
-| GIX-B200   | $5.787 |    6 |  36 | 0.276 | published                 |
+| GIX-H100   | $3.082 |   12 |  51 | 0.379 | published                 |
+| GIX-H200   | $3.566 |    7 |  24 | 0.398 | published                 |
+| GIX-A100   |     -- |   10 |  45 | 0.560 | withheld  dispersion      |
+| GIX-B200   | $5.823 |    6 |  39 | 0.294 | published                 |
 | GIX-MI300X |     -- |    1 |   2 |    -- | withheld  min_providers   |
 +---------------------------------------------------------------------+
 ```
+
+Two of five indices decline to print. That is the system working.
 
 ## Commands
 
@@ -64,10 +66,12 @@ All unauthenticated public endpoints. No scraping, no credentials.
 | [DataCrunch](https://api.datacrunch.io/v1/instance-types) | On-demand and spot on identical hardware | 2 |
 | `data/curated_rate_cards.json` | Hyperscaler list prices, hand-maintained | 3 |
 
-Curated entries carry an `as_of` date and are dropped after 45 days, so a
-forgotten catalogue degrades into missing data rather than a confidently wrong
-number. The shipped values are indicative and need re-verification before they
-mean anything.
+Curated entries carry an `as_of` date, a `source_url`, and a `source_type`
+recording how much the number is worth: the AWS rows are read from the feed
+backing the EC2 pricing page, the GCP and Azure rows are cross-checked against
+third-party aggregators and flagged as lower confidence. Everything here is
+dropped after 45 days, so a forgotten catalogue degrades into missing data
+rather than into a confidently wrong number.
 
 ## Layout
 
@@ -87,30 +91,39 @@ purpose.
 
 ## What came out of building it
 
-**The values land close to the commercial benchmarks.** Against Silicon Data's
-published levels the same week: H100 $2.95 here vs $2.67 there, B200 $5.79 vs
-$5.63, A100 $2.01 vs $1.61. Close enough to suggest the approach is sound;
-different enough to show how much the answer depends on methodology choices
-nobody can see from outside.
+Full write-up in [docs/FINDINGS.md](docs/FINDINGS.md). The short version:
 
-**Hyperscaler prices are not in the same market.** AWS, Azure, and GCP H100
-list rates (~$11–12/GPU-hr) sit 5.8–6.8 robust sigma from the neocloud median
-(~$3.25) and get screened out every run. The estimator is behaving correctly.
-The open question is whether that means one market with a wide quality spread,
-or two markets needing separate benchmarks — the data here points at two.
+**AWS has repriced into the neocloud range; GCP and Azure have not.** AWS
+`p5.48xlarge` works out to $6.88/GPU-hour and survives the outlier screen as a
+contributing input. GCP ($10.98) and Azure ($12.29) are screened at 5.8σ and
+6.8σ against a neocloud median of $3.25. The hyperscaler tier is not one tier.
 
-**One index withholds every day, and should.** Only one venue in the sample
-publishes MI300X pricing. `GIX-MI300X` therefore prints nothing rather than
-republishing a single vendor's rate card as a market price.
+I only found this by re-verifying the rate card against source. My first pass
+used a remembered AWS figure of $12.29 — launch-era pricing, since cut ~44% —
+which produced the tidier but wrong conclusion that hyperscalers are simply a
+separate market.
 
-**Sampling variance is the unglamorous risk.** Two runs three minutes apart
-gave an identical H100 fixing but moved A100 by 8%, purely because one
-provider's rows changed between them (9 contributors, then 8). Before anyone reads a daily delta as
-signal, the capture window has to be fixed and that variance quantified.
+**The A100 index withholds, and should.** Ten providers span $1.03 to $3.50 per
+GPU-hour, robust dispersion 0.560 against a 0.45 ceiling. As a GPU generation
+ages, surplus lands on marketplaces while managed providers keep charging for
+the service wrapper; the good stops being fungible and a single price stops
+being meaningful.
 
-**No transaction data exists.** Every input is an offer or a rate card. That
-gap is not closable with better statistics; it needs venues contractually
-reporting executed volume.
+There is a sharp lesson buried in that one. With the *incorrect* AWS number,
+A100 published at dispersion 0.365 — because the wrong value was extreme enough
+to be screened as an outlier, which tightened the surviving distribution.
+Correcting the input made the index stop publishing. **A wrong number that gets
+screened is more dangerous than a wrong number that does not**, because the
+screen hides it.
+
+**Sampling variance is the unglamorous risk.** Two runs three minutes apart gave
+an identical H100 fixing but moved A100 8%, purely because contributing
+providers went 9 to 8. Nothing about the market changed. A fixed capture window
+is a prerequisite before any daily delta is read as signal.
+
+**Nothing here is a transaction.** Every input is an offer or a rate card. That
+gap does not close with better statistics — it closes with commercial
+agreements under which venues report executed volume.
 
 ## Tests
 
