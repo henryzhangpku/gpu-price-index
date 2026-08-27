@@ -252,6 +252,34 @@ with maximum exposure. And a test suite built from realistic-looking data will
 not find this; it took deliberately hostile inputs, which is a different
 activity from testing that the happy path works.
 
+**The systematic fix is `tests/test_properties.py`**, which generates markets
+rather than choosing them and asserts ten invariants that must hold for any
+market at all: the fixing never escapes the range of contributing prices, an
+absurd quote in either direction is always screened, flooding a venue with
+duplicate SKUs changes nothing, scaling every price scales the fixing exactly,
+quote order is irrelevant, no provider exceeds the weight cap, and a failed
+gate always blocks publication.
+
+The generators round prices to a coarse grid deliberately. Sampling continuous
+floats would make exact ties vanishingly unlikely, and the original defect is
+reachable only through ties — which is the whole reason hand-written fixtures
+missed it.
+
+Two checks that the properties are worth having:
+
+* Reverted against the original screen, `test_an_absurdly_high_quote_is_always
+  _screened` and `test_an_absurdly_low_quote_is_always_screened` both fail, and
+  Hypothesis minimises the first to four providers at $0.25 and one adversary
+  at 100x. The properties catch the bug that hand-written tests missed.
+* The properties also found a mistake in their own author. A first attempt
+  asserted that a screened provider is always further from the median than any
+  kept one, measured as absolute distance. Hypothesis produced
+  `[0.25, 0.76, 0.76, 0.76, 1.28]`: MAD is zero, so the ratio branch runs, 0.25
+  is screened at 3.04x while 1.28 is kept at 1.68x — even though 1.28 sits a
+  hair further away in absolute terms. The screen was right and the stated
+  invariant was wrong. Writing the property forced the invariant to be stated
+  in the terms the code actually uses.
+
 ## 8. Nothing here is a transaction
 
 Every input is an offer or a rate card. Vast.ai offers are executable — a buyer
