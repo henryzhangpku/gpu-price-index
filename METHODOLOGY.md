@@ -1,0 +1,246 @@
+# GPU Rental Price Index — Methodology
+
+**Version 1.0.0**
+**Administrator:** reference implementation, not a live benchmark
+**Status:** demonstration. Do not settle anything against these values.
+
+---
+
+## 1. What the index is for
+
+The index answers one question, once per business day, for each covered GPU:
+
+> What did it cost to rent one of these, on demand, in the United States,
+> today?
+
+It is designed as if it were going to be referenced by a cash-settled
+derivative. That constraint drives every decision below. A market-intelligence
+number can be approximately right and quietly revised. A settlement number has
+to be reproducible years later, defensible against a counterparty who lost
+money on it, and resistant to a participant who wants it somewhere else.
+
+## 2. Coverage
+
+| Index | Benchmark good | Status |
+|---|---|---|
+| `GIX-H100` | NVIDIA H100 SXM 80GB | published |
+| `GIX-H200` | NVIDIA H200 SXM 141GB | published |
+| `GIX-A100` | NVIDIA A100 SXM 80GB | published |
+| `GIX-B200` | NVIDIA B200 SXM 180GB | published |
+| `GIX-MI300X` | AMD MI300X 192GB | withheld — insufficient providers |
+
+`GIX-MI300X` is included deliberately. Only one venue in the sample publishes
+MI300X pricing, so it fails the provider-count gate every day and prints
+nothing. An index that reported a number here would be reporting one vendor's
+rate card dressed up as a market.
+
+## 3. The benchmark-equivalent contract
+
+An index over a heterogeneous good is meaningless without a standard unit.
+"An H100-hour" is not one good: a PCIe card on Ethernet in a spare-capacity
+marketplace and an SXM card on an NVLink fabric under a datacentre SLA differ
+in price by a factor of three, and they are not substitutes for the buyer.
+
+Every index therefore defines exactly one good, and every input is restated as
+that good or discarded. For `GIX-H100`:
+
+> 1× NVIDIA H100 SXM 80GB, on-demand (no commitment), deployed in an 8-GPU
+> node with NVLink interconnect, US region, dedicated and non-preemptible,
+> priced in USD per GPU-hour, excluding persistent storage, egress, support
+> tiers, and any committed-use or credit discount.
+
+This mirrors how physical commodity benchmarks work: Platts assesses a
+standard cargo, the Baltic indices assess a standard route. The standard good
+is the benchmark; everything else is a spread to it.
+
+## 4. Restating inputs — and why this is the weak point
+
+Non-conforming attributes are restated with multiplicative factors. A factor
+above 1.00 means the observed good is cheaper than the benchmark good and is
+marked up to be comparable.
+
+| Attribute | Observed | Factor | Reasoning |
+|---|---|---|---|
+| Form factor | PCIe → SXM | 1.18 | Lower memory bandwidth, no NVLink fabric |
+| Form factor | unknown → SXM | 1.09 | Midpoint; also raises an uncertainty flag |
+| Interconnect | Ethernet → NVLink | 1.12 | Cannot serve multi-node training |
+| Interconnect | none → NVLink | 1.15 | Single-node only |
+| Commitment | spot → on-demand | 1.45 | Preemption risk the benchmark good lacks |
+| Commitment | community → on-demand | 1.30 | No uptime guarantee, unvetted hosts |
+| Commitment | reserved → on-demand | 1.25 | Removes the duration discount |
+| Node size | 1–2 GPU → 8 GPU | 0.92–0.95 | Removes the fractional-rental premium |
+
+**These factors are the most criticisable thing in this document, and that is
+deliberate.** They are calibrated judgement, not estimated spreads. Estimating
+them properly needs paired observations of the same hardware sold both ways at
+the same moment, and almost nobody publishes that. Three things keep the
+judgement honest rather than hidden:
+
+1. Every factor is stated numerically in one file (`src/gpuidx/spec.py`), so a
+   disputing counterparty argues with a number rather than with a black box.
+2. Factors compose multiplicatively and independently. Interaction effects
+   certainly exist, but a wrong interaction term is worse than an absent one.
+3. Any input needing more than **1.75×** cumulative adjustment is discarded.
+   Past that point the number describes the adjustment schedule rather than
+   the market.
+
+DataCrunch publishes on-demand and spot rates on identical hardware, which is
+the one place in this data set where the spot factor can be checked against
+something real rather than asserted. A production version would widen that
+check and re-estimate the schedule from it quarterly.
+
+**Region is screened, not adjusted.** Cross-border price differences reflect
+power costs, tax regimes, and latency to demand — a single scalar cannot
+honestly collapse that. Disclosed non-US capacity is discarded. Venues that
+publish one global rate card without regional attribution are admitted, since
+excluding them would remove most of the rate-card tier; this is a known
+compromise and is recorded as such.
+
+## 5. The waterfall
+
+Inputs are ranked by how much they prove, following the standard benchmark
+pattern of preferring transactions to quotes and quotes to judgement.
+
+| Tier | Definition | Weight | Sources here |
+|---|---|---|---|
+| 1 — executable | Offer a buyer can transact against right now, with observable capacity | 1.00 | Vast.ai offers above a reliability floor; Shadeform SKUs with confirmed live regions |
+| 2 — rate card | Published on-demand price, capacity not confirmed at capture | 0.60 | RunPod, DataCrunch, Shadeform SKUs without live regions |
+| 3 — judgement | Curated or carried-forward price standing in for an unobservable market | 0.25 | Hyperscaler list prices |
+
+A value resting entirely on tier 2 and 3 is published but flagged
+`no_executable_input`. The honest reading of such a print is "this is what
+vendors say they would charge", which is not the same claim as "this is what
+capacity traded at".
+
+## 6. Estimation
+
+Per index, per day:
+
+1. **Collapse to provider medians.** Each provider contributes one
+   observation regardless of how many SKUs it lists. A venue publishing forty
+   variants of one box gets one vote, not forty.
+2. **Screen on median absolute deviation.** Providers more than 3.0 robust
+   sigma from the cross-provider median are excluded. MAD is used rather than
+   standard deviation because it has a 50% breakdown point — the screen cannot
+   be defeated by the outlier it exists to catch. Screening is suppressed
+   below four providers, where it would remove signal rather than noise.
+3. **Weight by tier, then cap.** No single provider may carry more than **35%**
+   of total weight. The cap is applied iteratively, since capping one provider
+   raises everyone else's share. Below 1/0.35 ≈ 3 providers the cap is
+   unsatisfiable and is skipped; such an index fails the provider gate anyway.
+4. **Take the weighted mean** of surviving provider medians.
+
+Aggregator attribution matters here. Shadeform resells roughly twenty
+independent clouds through one feed. Counting it as a single provider would
+understate market breadth; treating its rows as twenty independent providers
+would overstate independence, since one feed outage removes them all at once.
+Inputs are attributed to the underlying cloud the buyer actually transacts
+with, and the weight cap bounds any single one. **The correlated-failure risk
+of that single feed is a real residual exposure and is not fully mitigated.**
+
+## 7. Publication gates
+
+A value is published only if **all** of these hold. Otherwise the index prints
+`withheld` with the failing gate recorded.
+
+| Gate | Threshold |
+|---|---|
+| Contributing providers | ≥ 4 |
+| Contributing observations | ≥ 8 |
+| Robust dispersion (MAD/median) | ≤ 0.45 |
+| Single-provider weight share | ≤ 35% |
+
+**Withholding is a first-class outcome.** A gap in the series is a fact about
+the market; an interpolated value is a fiction about it. Carrying yesterday's
+number forward on a thin day is exactly the behaviour that makes a benchmark
+manipulable — it converts "nobody traded" into "the price was unchanged",
+and it rewards whoever stayed quiet.
+
+## 8. Data quality
+
+Checks that catch failures which *look like valid data*, since a feed
+returning HTTP 500 is caught by the collector and a feed returning yesterday's
+prices forever is not:
+
+- **Stalled feed** — identical quote fingerprints across 3+ consecutive runs.
+  Fingerprints deliberately exclude capture time so an unchanged rate card
+  hashes identically day over day.
+- **Provider dropout** — a source returning under 50% of its recent average
+  row count. Partial truncation is more dangerous than total failure, because
+  total failure is obvious.
+- **Stale capture** — event time more than 6 hours behind the run, which
+  catches a live feed serving a cached response.
+- **Level shift** — day-over-day move beyond 15%. This *flags* but does not
+  block: real markets gap, and a benchmark that suppresses genuine moves is
+  worse than one that surfaces them. It requires sign-off, not suppression.
+- **Adjustment dominance** — over half of inputs needing 25%+ cumulative
+  adjustment, meaning the value reflects section 4 as much as observed prices.
+
+## 9. Revisions
+
+The store is append-only and bitemporal. Two clocks are tracked separately
+throughout:
+
+- **event time** — when the fact was true in the market (`index_date`)
+- **knowledge time** — when this system first knew it (`published_at`)
+
+A correction inserts a new revision and stamps its predecessor with
+`superseded_at`. Nothing is ever overwritten. This makes the query a
+settlement dispute actually needs answerable months later:
+
+```
+gpuidx as-of GIX-H100 2026-08-25 2026-08-26T09:00:00Z
+```
+
+— *what did the tape say for the 25th, as known on the morning of the 26th?*
+A store that overwrites in place cannot answer that, which means it cannot
+support a contract that settled against the original print.
+
+Corrections carry a mandatory reason, recorded on the revision. A production
+administrator would additionally need a published revision policy stating the
+window inside which corrections are made at all, since a settled contract
+cannot be un-settled — beyond that window the erroneous print stands and is
+annotated rather than replaced.
+
+## 10. Known limitations
+
+Stated plainly, because a methodology document that only lists strengths is a
+marketing document.
+
+1. **The index measures the neocloud spot tail, not the GPU market.** The
+   economically dominant volume is private multi-year bilateral capacity deals
+   that never appear on any rate card. Those contracts price differently and
+   are invisible here. Anything settling against this index carries that basis
+   risk.
+
+2. **Hyperscaler list prices do not survive the outlier screen.** AWS, Azure,
+   and GCP H100 list rates sit around $11–12 per GPU-hour against a neocloud
+   median near $3.25, and are screened at 5.8–6.8 robust sigma. This is the
+   estimator working correctly, and it raises a genuine question the
+   methodology does not resolve: whether hyperscaler and neocloud capacity are
+   one market with a large quality spread, or two markets that should carry
+   separate benchmarks. **The evidence in this data set points toward two.**
+
+3. **Adjustment factors are unvalidated.** See section 4.
+
+4. **Sample instability.** Two collections three minutes apart produced
+   identical `GIX-H100` values but moved `GIX-A100` by 8% (from $2.014 to
+   $2.175), because the contributing provider count changed from 9 to 8. A production version needs a defined capture window
+   with a fixed snapshot time rather than "whenever the job ran", and should
+   quantify intraday sampling variance before anyone trusts a daily delta.
+
+5. **No transaction data at all.** Every input is an offer or a rate card.
+   Nobody here observes a completed rental at a price. That is the single
+   largest gap between this and a benchmark that could responsibly settle a
+   contract, and no amount of estimator sophistication closes it — it requires
+   commercial agreements with venues to report executed volume.
+
+6. **Correlated source failure.** One aggregator supplies most of the provider
+   breadth. See section 6.
+
+## 11. Changing this document
+
+The methodology version is stamped onto every published value. A change to any
+factor, gate, or contract definition requires a version bump, so a series can
+be split at a methodology change rather than silently spliced across one.
+Consumers can then tell whether a move was the market or the method.
