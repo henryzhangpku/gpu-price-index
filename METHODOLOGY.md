@@ -25,7 +25,7 @@ money on it, and resistant to a participant who wants it somewhere else.
 |---|---|---|
 | `GIX-H100` | NVIDIA H100 SXM 80GB | published |
 | `GIX-H200` | NVIDIA H200 SXM 141GB | published |
-| `GIX-A100` | NVIDIA A100 SXM 80GB | published |
+| `GIX-A100` | NVIDIA A100 SXM 80GB | withheld — dispersion above ceiling |
 | `GIX-B200` | NVIDIA B200 SXM 180GB | published |
 | `GIX-MI300X` | AMD MI300X 192GB | withheld — insufficient providers |
 
@@ -213,21 +213,25 @@ marketing document.
    are invisible here. Anything settling against this index carries that basis
    risk.
 
-2. **Hyperscaler list prices do not survive the outlier screen.** AWS, Azure,
-   and GCP H100 list rates sit around $11–12 per GPU-hour against a neocloud
-   median near $3.25, and are screened at 5.8–6.8 robust sigma. This is the
-   estimator working correctly, and it raises a genuine question the
-   methodology does not resolve: whether hyperscaler and neocloud capacity are
-   one market with a large quality spread, or two markets that should carry
-   separate benchmarks. **The evidence in this data set points toward two.**
+2. **The hyperscaler tier is not one tier, and the treatment of it is a
+   judgement call.** AWS `p5.48xlarge` prices at $6.88/GPU-hour and survives
+   the outlier screen as a contributing input. GCP ($10.98) and Azure ($12.29)
+   are screened at 5.8 and 6.8 robust sigma against a neocloud median of $3.25.
+   Screening two of the three largest compute vendors out of a compute price
+   benchmark is defensible — their list rates arguably describe their own
+   pricing power rather than the market — but it is not obviously correct, and
+   a different administrator could justify a separate hyperscaler benchmark
+   instead. See [docs/FINDINGS.md](docs/FINDINGS.md) section 1.
 
 3. **Adjustment factors are unvalidated.** See section 4.
 
-4. **Sample instability.** Two collections three minutes apart produced
-   identical `GIX-H100` values but moved `GIX-A100` by 8% (from $2.014 to
-   $2.175), because the contributing provider count changed from 9 to 8. A production version needs a defined capture window
-   with a fixed snapshot time rather than "whenever the job ran", and should
-   quantify intraday sampling variance before anyone trusts a daily delta.
+4. **Sample instability.** Two collections three minutes apart produced an
+   identical `GIX-H100` value but moved `GIX-A100` by 8% (from $2.014 to
+   $2.175), because the contributing provider count changed from 9 to 8.
+   Nothing about the market changed in those three minutes. A production
+   version needs a defined capture window at a fixed time rather than
+   "whenever the job ran", and must quantify intraday sampling variance before
+   any daily delta is read as signal.
 
 5. **No transaction data at all.** Every input is an offer or a rate card.
    Nobody here observes a completed rental at a price. That is the single
@@ -237,6 +241,16 @@ marketing document.
 
 6. **Correlated source failure.** One aggregator supplies most of the provider
    breadth. See section 6.
+
+7. **The outlier screen can conceal a bad input.** During development an
+   incorrect AWS figure was extreme enough to be screened as an outlier, which
+   tightened the surviving distribution and let `GIX-A100` publish at
+   dispersion 0.365. Correcting the input to its true value put it inside the
+   screen, raised dispersion to 0.560, and the index correctly stopped
+   publishing. A wrong number that gets screened is more dangerous than one
+   that does not, because the screen hides it. Screening is not a substitute
+   for verifying inputs at the source, and the screen log must be reviewed
+   rather than treated as self-healing.
 
 ## 11. Changing this document
 
