@@ -84,10 +84,36 @@ judgement honest rather than hidden:
    Past that point the number describes the adjustment schedule rather than
    the market.
 
-DataCrunch publishes on-demand and spot rates on identical hardware, which is
-the one place in this data set where the spot factor can be checked against
-something real rather than asserted. A production version would widen that
-check and re-estimate the schedule from it quarterly.
+**One factor has since been validated, and one has been shown to be
+uncalibratable.** Where a venue sells identical hardware under two commitment
+types, the ratio is a direct observation of what it charges for the difference
+— but only when that ratio is a price rather than a policy. `gpuidx calibrate`
+measures it:
+
+| Venue | Tier | Pairs | Observed | Asserted | Error | CV | Verdict |
+|---|---|---|---|---|---|---|---|
+| RunPod | community | 41 | 1.316 | 1.30 | +1.2% | 0.93 | market-determined, supports the factor |
+| DataCrunch | spot | 54 | 2.000 | 1.45 | +37.9% | 0.0001 | administered policy, excluded |
+
+RunPod's community-to-secure ratio varies from 0.31 to 7.58 across models. That
+dispersion is what a real spread looks like, and its median lands within 1.2%
+of the asserted 1.30 — the factor survives contact with evidence.
+
+DataCrunch prices spot at *exactly* half of on-demand on all 54 of its
+instance types, a coefficient of variation of 0.0001. That is a discount
+schedule, not a market-clearing price, and it says nothing about the value of
+preemption risk. An earlier version of this document claimed it as the one
+place the spot factor could be checked; that claim was wrong, and the check it
+promised is not available anywhere in public data.
+
+Administered quotes are also excluded from the index outright. A price that is
+a fixed function of another price already in the sample is a duplicate: it
+double-counts one venue's view while adding noise through an adjustment factor
+it cannot itself calibrate. Detection is automatic — a near-zero coefficient of
+variation across a venue's SKUs — and every exclusion is flagged on the run.
+
+**The spot factor of 1.45 therefore remains asserted and unvalidated**, and
+should be read as the weakest number in this document.
 
 **Region is screened, not adjusted.** Cross-border price differences reflect
 power costs, tax regimes, and latency to demand — a single scalar cannot

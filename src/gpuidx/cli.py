@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from .calibrate import compare_to_schedule, observed_ratios
 from .pipeline import run_daily
 from .reproduce import coverage, rebuild, verify
 from .spec import CONTRACTS, DEFAULT_GATES
@@ -330,6 +331,58 @@ def verify_cmd(
     if not report.ok:
         raise typer.Exit(1)
     console.print("[green]series reproduces from its archive[/]")
+
+
+@app.command("calibrate")
+def calibrate_cmd() -> None:
+    """Measure the commitment factors against what venues actually charge.
+
+    Where a venue sells the same hardware under two commitment types, the
+    ratio is a direct observation of what it charges for the difference --
+    unless that ratio is identical on every SKU, in which case it is a
+    discount policy and carries no information.
+    """
+    from .providers import collect_all
+
+    with console.status("collecting from venues..."):
+        collection = collect_all()
+
+    evidence = observed_ratios(collection.observations)
+    rows = compare_to_schedule(evidence)
+    if not rows:
+        console.print("[yellow]no venue priced the same hardware two ways[/]")
+        raise typer.Exit(1)
+
+    table = Table(title="commitment factors: observed vs asserted", header_style="bold")
+    for column in ("venue", "tier", "n", "obs", "asserted", "err", "CV", "verdict"):
+        table.add_column(
+            column,
+            justify="left" if column in ("venue", "tier", "verdict") else "right",
+            no_wrap=True,
+        )
+
+    for row in sorted(rows, key=lambda r: (r["commitment"], r["source"])):
+        if row["administered"]:
+            verdict = "[yellow]administered[/]"
+        elif row["error"] is not None and abs(row["error"]) <= 0.10:
+            verdict = "[green]supports[/]"
+        else:
+            verdict = "[red]disagrees[/]"
+        table.add_row(
+            row["source"],
+            row["commitment"],
+            str(row["pairs"]),
+            f"{row['observed']:.3f}",
+            f"{row['asserted']:.2f}" if row["asserted"] else "--",
+            f"{row['error']:+.1%}" if row["error"] is not None else "--",
+            f"{row['cv']:.4f}",
+            verdict,
+        )
+    console.print(table)
+    console.print(
+        "\nA constant ratio across every SKU is a pricing policy, not a market "
+        "spread. Only a dispersed ratio is evidence."
+    )
 
 
 if __name__ == "__main__":
