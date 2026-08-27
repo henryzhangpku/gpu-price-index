@@ -34,9 +34,9 @@ from .spec import (
     FORM_FACTOR_FACTORS,
     INTERCONNECT_FACTORS,
     MAX_TOTAL_ADJUSTMENT,
+    US_REGION_TOKENS,
     BenchmarkContract,
     node_size_factor,
-    US_REGION_TOKENS,
 )
 
 

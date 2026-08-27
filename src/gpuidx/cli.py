@@ -1,15 +1,18 @@
 """Operator interface.
 
-Five verbs, matching the five things a benchmark administrator actually does:
-run the cycle, look at today's tape, audit how a number was built, answer an
-as-of question, and correct a bad print.
+The commands map to what a benchmark administrator actually does: run the
+fixing (``publish``), read the tape (``show``), audit how one number was built
+(``audit``), answer an as-of question (``as-of``, ``revisions``), restate the
+rules (``contracts``), rebuild and prove the series from its archive
+(``rebuild``, ``verify``), test the adjustment factors against venue pricing
+(``calibrate``), and examine what committed-use discounts do and do not imply
+about term structure (``forward``).
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -39,7 +42,7 @@ console = Console()
 SEVERITY_STYLE = {"info": "dim", "warn": "yellow", "error": "bold red"}
 
 
-def _store(db: Optional[Path]) -> Store:
+def _store(db: Path | None) -> Store:
     return Store(db)
 
 
@@ -49,9 +52,9 @@ def _fmt(value: float | None) -> str:
 
 @app.command()
 def publish(
-    db: Optional[Path] = typer.Option(None, help="SQLite path"),
-    index_date: Optional[str] = typer.Option(None, "--date", help="Index date (YYYY-MM-DD)"),
-    reason: Optional[str] = typer.Option(None, help="Revision reason, if correcting"),
+    db: Path | None = typer.Option(None, help="SQLite path"),
+    index_date: str | None = typer.Option(None, "--date", help="Index date (YYYY-MM-DD)"),
+    reason: str | None = typer.Option(None, help="Revision reason, if correcting"),
     archive: bool = typer.Option(
         True, help="Write an immutable snapshot and append to the tape"
     ),
@@ -108,7 +111,7 @@ def publish(
 @app.command()
 def show(
     index_code: str = typer.Argument(..., help="e.g. GIX-H100"),
-    db: Optional[Path] = typer.Option(None),
+    db: Path | None = typer.Option(None),
     limit: int = typer.Option(20),
 ) -> None:
     """Print the current view of a series."""
@@ -143,8 +146,8 @@ def show(
 def audit(
     index_code: str = typer.Argument(...),
     index_date: str = typer.Argument(...),
-    db: Optional[Path] = typer.Option(None),
-    revision: Optional[int] = typer.Option(None, help="Defaults to the live revision"),
+    db: Path | None = typer.Option(None),
+    revision: int | None = typer.Option(None, help="Defaults to the live revision"),
 ) -> None:
     """Show every provider behind one published value, screened ones included."""
     store = _store(db)
@@ -195,13 +198,13 @@ def as_of(
     index_code: str = typer.Argument(...),
     index_date: str = typer.Argument(..., help="Index date (event time)"),
     knowledge_time: str = typer.Argument(..., help="ISO timestamp (knowledge time)"),
-    db: Optional[Path] = typer.Option(None),
+    db: Path | None = typer.Option(None),
 ) -> None:
     """Answer: what did we say for this date, as known at that moment?"""
     store = _store(db)
     when = datetime.fromisoformat(knowledge_time)
     if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
+        when = when.replace(tzinfo=UTC)
 
     row = store.as_of(index_code, date.fromisoformat(index_date), when)
     if row is None:
@@ -228,7 +231,7 @@ def as_of(
 def revisions(
     index_code: str = typer.Argument(...),
     index_date: str = typer.Argument(...),
-    db: Optional[Path] = typer.Option(None),
+    db: Path | None = typer.Option(None),
 ) -> None:
     """List every revision of one value, including superseded ones."""
     store = _store(db)
@@ -274,8 +277,8 @@ def contracts() -> None:
 
 @app.command("rebuild")
 def rebuild_cmd(
-    db: Optional[Path] = typer.Option(None),
-    root: Optional[Path] = typer.Option(None, help="Archive root"),
+    db: Path | None = typer.Option(None),
+    root: Path | None = typer.Option(None, help="Archive root"),
     recent: int = typer.Option(
         10, help="Replay only the last N snapshots; 0 replays the whole archive"
     ),
@@ -303,7 +306,7 @@ def rebuild_cmd(
 
 @app.command("verify")
 def verify_cmd(
-    root: Optional[Path] = typer.Option(None, help="Archive root"),
+    root: Path | None = typer.Option(None, help="Archive root"),
 ) -> None:
     """Recompute every published value from archived inputs and compare.
 
@@ -399,7 +402,6 @@ def calibrate_cmd() -> None:
 @app.command("forward")
 def forward_cmd(
     spot: float = typer.Option(3.05, help="Current spot level, USD per GPU-hour"),
-    db: Optional[Path] = typer.Option(None),
 ) -> None:
     """Invert committed-use discounts for an implied expected price decline.
 

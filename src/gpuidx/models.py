@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import date, datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -42,20 +42,20 @@ class Tier(int, Enum):
     JUDGEMENT = 3
 
 
-class Commitment(str, Enum):
+class Commitment(StrEnum):
     ON_DEMAND = "on_demand"
     SPOT = "spot"
     COMMUNITY = "community"
     RESERVED = "reserved"
 
 
-class FormFactor(str, Enum):
+class FormFactor(StrEnum):
     SXM = "sxm"
     PCIE = "pcie"
     UNKNOWN = "unknown"
 
 
-class Interconnect(str, Enum):
+class Interconnect(StrEnum):
     NVLINK = "nvlink"
     INFINIBAND = "infiniband"
     ETHERNET = "ethernet"
@@ -134,7 +134,7 @@ class NormalizedQuote(BaseModel):
         return self.normalized_usd_per_gpu_hour / self.raw_usd_per_gpu_hour
 
 
-class IndexStatus(str, Enum):
+class IndexStatus(StrEnum):
     PUBLISHED = "published"
     #: Gates failed. A gap is an honest answer; a guess is not.
     WITHHELD = "withheld"

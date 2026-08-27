@@ -214,7 +214,45 @@ futures market or commercial access to bilateral term deals. `gpuidx forward`
 exists to make the size of that gap explicit rather than to paper over it with
 a fitted curve.
 
-## 7. Nothing here is a transaction
+## 7. The manipulation screen had a hole in it, and consensus opened it
+
+The estimator screens outliers on median absolute deviation specifically
+because MAD has a 50% breakdown point — you cannot defeat it with the outlier
+it exists to catch. Feeding it deliberately hostile inputs found a case where
+it stopped working entirely.
+
+```
+four providers at $3.00, one at $1,000,000
+median = $3.00
+MAD    = median(0, 0, 0, 0, 999997) = 0
+```
+
+With MAD at zero the sigma test is undefined, and the implementation returned
+without screening anything. The published value was **$200,002**.
+
+The trap is that the failure requires *agreement*. As long as honest providers
+differ even slightly, MAD is positive and the screen works, which is why the
+original test — built on prices of 3.00, 3.10, 2.90, 3.05 — passed happily. The
+screen only broke when the market agreed exactly, which is also the moment a
+single extreme quote does the most damage. A tight consensus and a broken
+outlier screen arrive together.
+
+The fix falls back to a symmetric ratio band when MAD is zero: anything more
+than 3x above or below the consensus is screened. The first attempt used a
+percentage deviation and was wrong twice over. It screened a provider 50%
+below consensus, which is ordinary market structure rather than manipulation —
+spare-capacity marketplaces really do clear at half a managed cloud. And a
+percentage test is capped at 100% on the downside, so it could never have
+caught a one-cent quote against a three-dollar consensus at all. A ratio band
+is symmetric in the way the problem is.
+
+Two things worth taking from it. Robust statistics have degenerate cases, and
+the degenerate case is not always the harmless one — here it coincided exactly
+with maximum exposure. And a test suite built from realistic-looking data will
+not find this; it took deliberately hostile inputs, which is a different
+activity from testing that the happy path works.
+
+## 8. Nothing here is a transaction
 
 Every input is an offer or a rate card. Vast.ai offers are executable — a buyer
 could transact against them right now — but nobody in this data set observes a

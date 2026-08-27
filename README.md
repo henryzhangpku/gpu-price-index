@@ -16,10 +16,16 @@ particularly section 10.
 
 ```bash
 uv sync
-uv run gpuidx publish
+uv run gpuidx rebuild     # restore the series from the committed archive
+uv run gpuidx show GIX-H100
+uv run gpuidx verify      # prove every value reproduces from its own inputs
 ```
 
-Live output from a real run:
+That path needs no network and no credentials — it reads the archive in this
+repo. `uv run gpuidx publish` runs a live collection instead, which is what the
+daily job does.
+
+Output from a real run:
 
 ```
 +----------------- collection ------------------+
@@ -176,6 +182,16 @@ on how much you attribute to lock-in, and AWS's own 1-year and 3-year discounts
 imply rates 23 points apart. Those numbers are not a forecast; they are proof
 the proxy is wrong. `gpuidx forward` exists to size that gap, not to paper over
 it with a fitted curve.
+
+**The manipulation screen had a hole in it.** MAD is used precisely because it
+cannot be defeated by the outlier it exists to catch — but when half the
+providers quote exactly the same price, MAD collapses to zero and the test
+becomes undefined. The implementation returned without screening anything, and
+four providers at $3.00 alongside one at $1,000,000 published **$200,002**. The
+failure needed the market to *agree*, which is also when one extreme quote does
+the most damage. Realistic-looking test data never found it; deliberately
+hostile data found it immediately. Full account in
+[docs/FINDINGS.md](docs/FINDINGS.md) section 7.
 
 **Nothing here is a transaction.** Every input is an offer or a rate card. That
 gap does not close with better statistics — it closes with commercial

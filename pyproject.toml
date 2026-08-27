@@ -26,3 +26,20 @@ packages = ["src/gpuidx"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF", "ARG", "SIM", "C4"]
+ignore = [
+    # Typer's whole interface is Option()/Argument() in defaults.
+    "B008",
+    # Long lines are almost always prose in a docstring or a table.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixtures legitimately take arguments they only forward.
+"tests/*" = ["ARG001", "ARG005"]

@@ -150,6 +150,18 @@ Per index, per day:
    standard deviation because it has a 50% breakdown point — the screen cannot
    be defeated by the outlier it exists to catch. Screening is suppressed
    below four providers, where it would remove signal rather than noise.
+
+   When half or more of the providers quote *exactly* the same price, MAD
+   collapses to zero and the sigma test is undefined. That is not a rare
+   corner; it is the most dangerous configuration the screen faces, because a
+   tight consensus is precisely when one extreme quote drags the mean
+   furthest. In that case the screen falls back to a symmetric ratio band and
+   excludes anything more than 3x above or below the consensus. The band is a
+   ratio rather than a percentage because a percentage test is capped at 100%
+   on the downside and could never catch one cent against a three dollar
+   consensus. It is deliberately loose: genuinely cheap capacity exists, and
+   this is a backstop against the absurd rather than a second opinion on where
+   the market is.
 3. **Weight by tier, then cap.** No single provider may carry more than **35%**
    of total weight. The cap is applied iteratively, since capping one provider
    raises everyone else's share. Below 1/0.35 ≈ 3 providers the cap is
@@ -249,7 +261,12 @@ marketing document.
    a different administrator could justify a separate hyperscaler benchmark
    instead. See [docs/FINDINGS.md](docs/FINDINGS.md) section 1.
 
-3. **Adjustment factors are unvalidated.** See section 4.
+3. **Most adjustment factors remain unvalidated.** Section 4 tests the two
+   that can be tested: the community factor survives at +1.2% against 41
+   observed pairs, and the spot factor turns out to be uncalibratable from
+   public data because the only venue quoting both tiers administers the
+   spread rather than pricing it. The form-factor, interconnect, and node-size
+   factors have no observable check at all and remain pure judgement.
 
 4. **Sample instability.** Two collections three minutes apart produced an
    identical `GIX-H100` value but moved `GIX-A100` by 8% (from $2.014 to
@@ -288,6 +305,17 @@ marketing document.
    that does not, because the screen hides it. Screening is not a substitute
    for verifying inputs at the source, and the screen log must be reviewed
    rather than treated as self-healing.
+
+9. **Screening and adjusting are applied inconsistently.** Region is screened
+   because a scalar cannot honestly collapse power and tax regimes, and that
+   reasoning applies just as well to form factor: a PCIe card on Ethernet is a
+   different good from an SXM card on an NVLink fabric, not a discounted
+   version of one. The methodology nonetheless adjusts form factor and
+   interconnect while screening region. The consistent alternative is to
+   restrict inputs to SXM and discard PCIe entirely, trading breadth for the
+   removal of an unvalidatable judgement from the settlement path. For a
+   benchmark intended to settle contracts that is probably the right trade,
+   and it is not the one currently implemented.
 
 ## 11. Changing this document
 

@@ -24,7 +24,6 @@ are things a benchmark administrator has to be able to detect.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 
 from . import METHODOLOGY_VERSION

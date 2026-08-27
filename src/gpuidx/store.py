@@ -21,10 +21,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Iterator
 
 from . import METHODOLOGY_VERSION
 from .estimator import Estimate
@@ -132,7 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_flags_run ON quality_flags(run_id);
 
 
 def _utc() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class Store:
@@ -282,7 +282,7 @@ class Store:
             dispersion=estimate.dispersion,
             withheld_reason=None if published else estimate.failed_gate_summary,
             methodology_version=METHODOLOGY_VERSION,
-            published_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
             revision_reason=revision_reason,
         )
 

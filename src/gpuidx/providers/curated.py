@@ -23,7 +23,7 @@ staleness gate is what makes that safe to say out loud.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
@@ -43,14 +43,13 @@ class Curated(Provider):
 
     def __init__(self, path: Path | None = None, today: date | None = None) -> None:
         self.path = path or CATALOG_PATH
-        self.today = today or datetime.now(timezone.utc).date()
+        self.today = today or datetime.now(UTC).date()
         self.dropped_stale: list[str] = []
 
     def collect(self, client: httpx.Client) -> list[RawObservation]:  # noqa: ARG002
         if not self.path.exists():
             return []
         entries = json.loads(self.path.read_text(encoding="utf-8"))
-        captured = datetime.now(timezone.utc)
 
         out: list[RawObservation] = []
         for entry in entries:
@@ -77,7 +76,7 @@ class Curated(Provider):
                     # Event time is when the rate card was true, not now. The
                     # bitemporal store keeps that distinct from ingest time.
                     observed_at=datetime.combine(
-                        as_of, datetime.min.time(), tzinfo=timezone.utc
+                        as_of, datetime.min.time(), tzinfo=UTC
                     ),
                     payload={
                         "source_url": entry.get("source_url"),
