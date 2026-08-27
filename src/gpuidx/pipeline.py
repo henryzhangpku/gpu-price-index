@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 from . import METHODOLOGY_VERSION
+from .archive import append_to_tape, stamp_superseded, write_snapshot
 from .estimator import Estimate, estimate
 from .models import IndexValue, NormalizedQuote, QualityFlag
 from .normalize import normalize_all
@@ -55,14 +57,24 @@ def run_daily(
     providers: list[Provider] | None = None,
     gates: Gates | None = None,
     revision_reason: str | None = None,
+    archive_root: Path | None = None,
 ) -> RunReport:
-    """Execute one publication cycle and persist everything it touched."""
+    """Execute one publication cycle and persist everything it touched.
+
+    When ``archive_root`` is given, the run's raw observations are written to
+    an immutable snapshot and its published values are appended to the tape.
+    Those two artefacts, not the database, are the durable record.
+    """
     gates = gates or DEFAULT_GATES
     index_date = index_date or datetime.now(timezone.utc).date()
 
     collection = collect_all(providers)
     run_id = store.start_run(collection.per_provider)
     store.record_observations(run_id, collection.observations)
+
+    snapshot_path = None
+    if archive_root is not None:
+        snapshot_path = write_snapshot(archive_root, collection.observations)
 
     quotes, normalization_flags = normalize_all(collection.observations)
     store.record_quotes(run_id, quotes)
@@ -102,6 +114,22 @@ def run_daily(
         report.estimates[code] = est
         report.values[code] = value
         report.flags.extend(index_flags)
+
+    if archive_root is not None:
+        append_to_tape(
+            archive_root,
+            [
+                {
+                    **v.model_dump(mode="json"),
+                    # Filled in by stamp_superseded once a later revision exists.
+                    "superseded_at": "",
+                    # Provenance: the exact inputs this value was computed from.
+                    "snapshot": snapshot_path.name if snapshot_path else "",
+                }
+                for v in report.values.values()
+            ],
+        )
+        stamp_superseded(archive_root)
 
     return report
 

@@ -49,10 +49,36 @@ uv run gpuidx show GIX-H100                # the series
 uv run gpuidx audit GIX-H100 2026-08-27    # every provider behind one value
 uv run gpuidx revisions GIX-H100 2026-08-27
 uv run gpuidx as-of GIX-H100 2026-08-27 2026-08-27T20:15:00Z
+uv run gpuidx rebuild                      # restore the database from the archive
+uv run gpuidx verify                       # recompute every value from its inputs
 ```
 
 `audit` is the one worth looking at. It shows every contributing provider,
 its weight and share, and every provider that was screened out and why.
+
+## The durable record
+
+The pipeline [runs daily](.github/workflows/daily.yml) and commits two things.
+The SQLite database is not one of them — it is derived state, rebuilt from the
+archive at the start of every run.
+
+```
+snapshots/2026-08-27T140500Z.jsonl.gz   every raw observation, exactly as the
+                                        venue stated it, never modified
+series/index_values.csv                 the publication record: one row per
+                                        revision, append-only
+```
+
+The snapshots make a value reconstructible. The tape cannot be derived from
+them, because it records *what was published and when*, including values later
+superseded — re-deriving it from inputs would quietly erase the revision
+history, which is the one thing a settlement dispute needs. Each tape row names
+the snapshot it came from, so a day carrying two runs can still be checked.
+
+`gpuidx verify` recomputes every published value from its own archived inputs
+and fails if any no longer reproduces. It runs in CI on every fixing, which
+means the series is not merely logged — it is auditable, and an altered
+snapshot or an unversioned methodology change breaks the build.
 
 ## Sources
 
@@ -103,18 +129,22 @@ used a remembered AWS figure of $12.29 — launch-era pricing, since cut ~44% �
 which produced the tidier but wrong conclusion that hyperscalers are simply a
 separate market.
 
-**The A100 index withholds, and should.** Ten providers span $1.03 to $3.50 per
-GPU-hour, robust dispersion 0.560 against a 0.45 ceiling. As a GPU generation
-ages, surplus lands on marketplaces while managed providers keep charging for
-the service wrapper; the good stops being fungible and a single price stops
-being meaningful.
+**The A100 market has fragmented, and the gate that detects it flickers.** Ten
+providers span $0.81 to $3.50 per GPU-hour — aged hardware dumped on
+marketplaces while managed providers keep charging for the service wrapper. But
+two runs an hour apart, on a market that did not move, gave dispersion 0.560
+(withheld, 10 providers) and 0.365 (published, 9 providers). One mid-range
+provider entering flips the publication decision, because MAD over ~10 points
+is too coarse an order statistic to gate on. That is a design defect, it only
+shows up if you run the thing repeatedly, and fixing it properly needs a real
+time series — which is why the pipeline now runs daily.
 
-There is a sharp lesson buried in that one. With the *incorrect* AWS number,
-A100 published at dispersion 0.365 — because the wrong value was extreme enough
-to be screened as an outlier, which tightened the surviving distribution.
-Correcting the input made the index stop publishing. **A wrong number that gets
-screened is more dangerous than a wrong number that does not**, because the
-screen hides it.
+**A wrong number that gets screened is more dangerous than one that does not.**
+With the incorrect AWS figure, AWS was extreme enough to be screened as an
+outlier, which tightened the surviving distribution and let A100 publish.
+Correcting the input put it inside the screen and stopped publication. The
+screen hid the bad input rather than surfacing it. Screening is not a
+substitute for verifying inputs at source.
 
 **Sampling variance is the unglamorous risk.** Two runs three minutes apart gave
 an identical H100 fixing but moved A100 8%, purely because contributing

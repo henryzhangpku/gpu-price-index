@@ -37,40 +37,67 @@ prices are evidence about the market or evidence about GCP and Azure. This
 implementation screens them, which is a defensible choice and not an obviously
 correct one.
 
-## 2. The A100 market has fragmented, and the dispersion gate catches it
+## 2. The A100 market has fragmented — and the gate that detects it flickers
 
-`GIX-A100` **withholds**. Ten providers contribute, spanning:
+`GIX-A100` draws from ten providers spanning a 3.4x range:
 
 ```
-vastai                  $1.032   <- marketplace, aged hardware
-datacrunch              $1.281
-shadeform:denvr         $1.406
-shadeform:massedcompute $1.533
-runpod                  $1.699
-shadeform:crusoe        $2.060
-shadeform:lambdalabs    $2.700
-shadeform:excesssupply  $3.000
-curated:aws             $3.431
-shadeform:paperspace    $3.500   <- managed, SLA-backed
+vastai                  $0.81 - $1.03   <- marketplace, aged hardware
+datacrunch              $1.28
+shadeform:denvr         $1.41
+shadeform:massedcompute $1.53
+runpod                  $1.70
+shadeform:crusoe        $2.06
+shadeform:lambdalabs    $2.70
+shadeform:excesssupply  $3.00
+curated:aws             $3.43
+shadeform:paperspace    $3.50            <- managed, SLA-backed
 ```
-
-A 3.4× spread across ten venues, robust dispersion **0.560** against a 0.45
-ceiling. The gate refuses to publish, and it is right to: there is no single
-number that honestly represents both a $1.03 marketplace hour and a $3.50
-managed hour.
 
 This looks like an aging-hardware effect. As a generation is superseded,
 surplus capacity gets dumped onto marketplaces while managed providers keep
 charging for the service wrapper rather than the silicon. The good stops being
 fungible, and a single-price index stops being meaningful. H100 shows the same
-pattern at a milder 0.379 dispersion; watching that number rise over time
-would be an early warning that the H100 index is heading the same way.
+pattern at a milder 0.35-0.38 dispersion; watching that number rise would be an
+early warning that the H100 index is heading the same way.
 
-Note the mechanical subtlety: with the *incorrect* AWS figure, AWS was screened
-as an outlier and the surviving distribution looked tighter (0.365, published).
-Correcting the input made the index *stop* publishing. A wrong number that gets
-screened is more dangerous than a wrong number that does not, because the
-screen hides it.
+**But the gate meant to detect this is not stable enough to act on.** Two runs
+an hour apart, on a market that did not move:
+
+| Run | Providers | Median | Dispersion | Decision |
+|---|---|---|---|---|
+| A | 10 | $1.880 | **0.560** | withheld |
+| B | 9 (Lambda absent) | $1.699 | **0.365** | published |
+
+One provider entering or leaving flips the publication decision, and not
+because it was an outlier — Lambda at $2.70 sits mid-range. The cause is that
+median absolute deviation over ~10 points is a coarse order statistic. Going
+from 9 to 10 points moves both the median and the MAD from a single order
+statistic to an average of two straddling a gap in the distribution, and the
+ratio jumps 54%.
+
+This is a design defect, not a data problem, and it is the kind that only
+appears once you run the thing repeatedly rather than once. A production
+version needs one of:
+
+- **hysteresis** — a higher threshold to enter the withheld state than to
+  leave it, so the index does not oscillate;
+- **a persistence rule** — withhold only after N consecutive breaches;
+- **a smoother dispersion estimate** — a trimmed interquartile ratio, or MAD
+  pooled over a trailing window rather than computed on a single day's cross
+  section.
+
+All three need a real time series to calibrate against, which is the immediate
+reason the pipeline now runs daily and archives every input. Fixing this is the
+next piece of work, and it is deliberately not fixed by guessing a constant.
+
+There is also a mechanical trap worth naming. With an *incorrect* AWS figure
+present, AWS was screened as an outlier, the surviving distribution looked
+tighter, and the index published at 0.365. Correcting the input to its true
+value put it inside the screen and pushed dispersion to 0.560. **A wrong number
+that gets screened is more dangerous than a wrong number that does not**,
+because the screen hides it. Screening is not a substitute for verifying
+inputs at source.
 
 ## 3. Sampling variance is the unglamorous risk
 

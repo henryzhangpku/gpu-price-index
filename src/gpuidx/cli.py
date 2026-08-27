@@ -17,8 +17,12 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .pipeline import run_daily
+from .reproduce import coverage, rebuild, verify
 from .spec import CONTRACTS, DEFAULT_GATES
 from .store import Store
+
+#: Repository root, where snapshots/ and series/ live.
+ARCHIVE_ROOT = Path(__file__).resolve().parents[2]
 
 app = typer.Typer(add_completion=False, help="GPU rental price benchmark reference implementation")
 console = Console()
@@ -39,13 +43,21 @@ def publish(
     db: Optional[Path] = typer.Option(None, help="SQLite path"),
     index_date: Optional[str] = typer.Option(None, "--date", help="Index date (YYYY-MM-DD)"),
     reason: Optional[str] = typer.Option(None, help="Revision reason, if correcting"),
+    archive: bool = typer.Option(
+        True, help="Write an immutable snapshot and append to the tape"
+    ),
 ) -> None:
     """Run one full collection and publication cycle."""
     store = _store(db)
     target = date.fromisoformat(index_date) if index_date else None
 
     with console.status("collecting from venues..."):
-        report = run_daily(store, index_date=target, revision_reason=reason)
+        report = run_daily(
+            store,
+            index_date=target,
+            revision_reason=reason,
+            archive_root=ARCHIVE_ROOT if archive else None,
+        )
 
     console.print(
         Panel(
@@ -249,6 +261,75 @@ def contracts() -> None:
             expand=False,
         )
     )
+
+
+@app.command("rebuild")
+def rebuild_cmd(
+    db: Optional[Path] = typer.Option(None),
+    root: Optional[Path] = typer.Option(None, help="Archive root"),
+    recent: int = typer.Option(
+        10, help="Replay only the last N snapshots; 0 replays the whole archive"
+    ),
+) -> None:
+    """Reconstruct the database from archived snapshots and the tape.
+
+    The database is derived state and is never committed; this is how history
+    is restored from the durable files.
+    """
+    store = _store(db)
+    target = root or ARCHIVE_ROOT
+    with console.status("replaying archive..."):
+        count = rebuild(store, target, recent=recent or None)
+    stats = coverage(target)
+    console.print(
+        Panel(
+            f"replayed   {count} snapshots\n"
+            f"tape rows  {stats['tape_rows']} across {stats['index_dates']} index dates",
+            title="rebuild",
+            expand=False,
+        )
+    )
+    store.close()
+
+
+@app.command("verify")
+def verify_cmd(
+    root: Optional[Path] = typer.Option(None, help="Archive root"),
+) -> None:
+    """Recompute every published value from archived inputs and compare.
+
+    Exits non-zero on any mismatch, so CI fails when the series stops being
+    reproducible from its own archive.
+    """
+    target = root or ARCHIVE_ROOT
+    with console.status("recomputing from archive..."):
+        report = verify(target)
+
+    console.print(
+        Panel(
+            f"checked      {report.checked}\n"
+            f"reproduced   {report.matched}\n"
+            f"mismatched   {len(report.mismatches)}\n"
+            f"unverifiable {len(report.unverifiable)}",
+            title="verify",
+            expand=False,
+        )
+    )
+
+    for note in report.methodology_drift:
+        console.print(f"  [yellow]methodology[/] {note}")
+    for item in report.unverifiable:
+        console.print(f"  [dim]unverifiable[/] {item.index_code} {item.index_date}: {item.detail}")
+    for item in report.mismatches:
+        console.print(
+            f"  [bold red]mismatch[/] {item.index_code} {item.index_date}: "
+            f"published {_fmt(item.published)}, recomputed {_fmt(item.recomputed)} "
+            f"({item.detail})"
+        )
+
+    if not report.ok:
+        raise typer.Exit(1)
+    console.print("[green]series reproduces from its archive[/]")
 
 
 if __name__ == "__main__":
