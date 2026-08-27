@@ -99,7 +99,42 @@ that gets screened is more dangerous than a wrong number that does not**,
 because the screen hides it. Screening is not a substitute for verifying
 inputs at source.
 
-## 3. Sampling variance is the unglamorous risk
+## 3. Half the "market data" here is a pricing policy
+
+Two venues sell identical hardware under two commitment types, which should
+let the commitment adjustment factors be estimated rather than asserted. Only
+one of them actually can.
+
+| Venue | Tier | Pairs | Observed ratio | Asserted | CV |
+|---|---|---|---|---|---|
+| RunPod | community vs secure | 41 | 1.316 | 1.30 | **0.93** |
+| DataCrunch | spot vs on-demand | 54 | 2.000 | 1.45 | **0.0001** |
+
+RunPod's ratio ranges from 0.31 to 7.58 across models — genuine dispersion,
+because peer-supplied capacity clears differently for a 4090 than for an H200.
+Its median lands within 1.2% of the factor the methodology asserts, which is
+about as good as a judgement call gets.
+
+DataCrunch prices spot at exactly 50.00% of on-demand on every single SKU. That
+is not a market observation; it is a rule in a config file somewhere. Treating
+it as evidence about the price of preemption risk would be circular, and using
+it to calibrate the spot factor would be calibrating against an assumption.
+
+Two consequences:
+
+1. **The spot factor stays unvalidated.** No venue in public data prices
+   preemptible capacity in a way that reveals what preemption is worth.
+2. **Administered quotes are excluded from the index.** A price that is a fixed
+   multiple of another price in the same sample is a duplicate observation
+   dressed as an independent one. The pipeline now detects them by coefficient
+   of variation and drops them, flagging each exclusion.
+
+The general lesson is worth more than the specific finding: a feed can be
+live, well-formed, high-volume, and still contain no information. Volume of
+data is not evidence, and nothing about the shape of the payload tells you
+which kind you have.
+
+## 4. Sampling variance is the unglamorous risk
 
 Two runs three minutes apart produced an identical `GIX-H100` fixing but moved
 `GIX-A100` by 8% ($2.014 → $2.175), purely because the contributing provider
@@ -110,7 +145,7 @@ because the sample did. Before any daily delta can be read as signal, the
 capture has to happen in a fixed window at a fixed time, and the intraday
 sampling variance has to be measured and published alongside the level.
 
-## 4. Only one venue quotes MI300X
+## 5. Only one venue quotes MI300X
 
 `GIX-MI300X` withholds every single run: one provider, two observations,
 against gates of four and eight. There is no honest number to print. An index
@@ -122,7 +157,7 @@ coverage faces exactly this temptation, and the failure is invisible to
 consumers unless the methodology discloses provider counts per index. This one
 publishes them on every value.
 
-## 5. Nothing here is a transaction
+## 6. Nothing here is a transaction
 
 Every input is an offer or a rate card. Vast.ai offers are executable — a buyer
 could transact against them right now — but nobody in this data set observes a

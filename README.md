@@ -51,6 +51,7 @@ uv run gpuidx revisions GIX-H100 2026-08-27
 uv run gpuidx as-of GIX-H100 2026-08-27 2026-08-27T20:15:00Z
 uv run gpuidx rebuild                      # restore the database from the archive
 uv run gpuidx verify                       # recompute every value from its inputs
+uv run gpuidx calibrate                    # test the adjustment factors against venue pricing
 ```
 
 `audit` is the one worth looking at. It shows every contributing provider,
@@ -145,6 +146,21 @@ outlier, which tightened the surviving distribution and let A100 publish.
 Correcting the input put it inside the screen and stopped publication. The
 screen hid the bad input rather than surfacing it. Screening is not a
 substitute for verifying inputs at source.
+
+**Half the "market data" here is a pricing policy.** Two venues sell identical
+hardware under two commitment types, which should let the commitment
+adjustment factors be estimated rather than asserted. RunPod's community-to-
+secure ratio ranges 0.31–7.58 across models with a median of 1.316 — genuine
+dispersion, and within 1.2% of the 1.30 the methodology asserts. DataCrunch
+prices spot at exactly 50.00% of on-demand on all 54 of its SKUs, a coefficient
+of variation of 0.0001. That is a rule in a config file, not a market
+observation, and calibrating against it would be calibrating against an
+assumption. The pipeline now detects administered pricing by dispersion and
+excludes it, since a price that is a fixed multiple of another price in the
+same sample is a duplicate observation dressed as an independent one.
+
+A feed can be live, well-formed, high-volume, and contain no information.
+Nothing about the shape of the payload tells you which kind you have.
 
 **Sampling variance is the unglamorous risk.** Two runs three minutes apart gave
 an identical H100 fixing but moved A100 8%, purely because contributing

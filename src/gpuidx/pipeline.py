@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import METHODOLOGY_VERSION
 from .archive import append_to_tape, stamp_superseded, write_snapshot
+from .calibrate import drop_administered
 from .estimator import Estimate, estimate
 from .models import IndexValue, NormalizedQuote, QualityFlag
 from .normalize import normalize_all
@@ -76,10 +77,16 @@ def run_daily(
     if archive_root is not None:
         snapshot_path = write_snapshot(archive_root, collection.observations)
 
-    quotes, normalization_flags = normalize_all(collection.observations)
+    # Administered prices are a deterministic function of a quote already in
+    # the sample. Admitting them double-counts one venue and adds noise via an
+    # adjustment factor that cannot be calibrated from them.
+    informative, administered_flags = drop_administered(collection.observations)
+
+    quotes, normalization_flags = normalize_all(informative)
     store.record_quotes(run_id, quotes)
 
     flags: list[QualityFlag] = list(collection.flags)
+    flags += administered_flags
     flags += normalization_flags
     flags += check_capture_freshness(collection.observations)
     flags += check_provider_dropout(store, run_id)
