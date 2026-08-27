@@ -24,7 +24,7 @@ MODELS = ["H100 SXM", "H200", "A100 SXM4", "B200", "RTX 4090", "L40S", "A40"]
 def paired(make_obs, source, commitment, ratios, base=4.0):
     """A venue listing on-demand and one other tier on the same hardware."""
     observations = []
-    for model, ratio in zip(MODELS, ratios):
+    for model, ratio in zip(MODELS, ratios, strict=True):
         observations.append(
             make_obs(source=source, gpu_model=model, price_per_gpu=base, sku=f"{model}-od")
         )

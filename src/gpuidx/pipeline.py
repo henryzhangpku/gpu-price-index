@@ -11,7 +11,7 @@ possible to follow it without a debugger.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from . import METHODOLOGY_VERSION
@@ -66,7 +66,7 @@ def run_daily(
     Those two artefacts, not the database, are the durable record.
     """
     gates = gates or DEFAULT_GATES
-    index_date = index_date or datetime.now(timezone.utc).date()
+    index_date = index_date or datetime.now(UTC).date()
 
     collection = collect_all(providers)
     run_id = store.start_run(collection.per_provider)

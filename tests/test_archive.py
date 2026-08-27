@@ -8,7 +8,7 @@ published series can be derived back out of the archive.
 from __future__ import annotations
 
 import gzip
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -95,7 +95,7 @@ def test_snapshot_is_gzipped_jsonl(tmp_path, make_obs):
 
 
 def test_published_series_reproduces_from_its_archive(tmp_path, make_obs):
-    captured = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
+    captured = datetime(2026, 8, 27, 14, 5, tzinfo=UTC)
     publish_into_archive(tmp_path, build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}), captured)
 
     report = verify(tmp_path)
@@ -105,7 +105,7 @@ def test_published_series_reproduces_from_its_archive(tmp_path, make_obs):
 
 
 def test_tampering_with_a_snapshot_is_detected(tmp_path, make_obs):
-    captured = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
+    captured = datetime(2026, 8, 27, 14, 5, tzinfo=UTC)
     path, _ = publish_into_archive(
         tmp_path, build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}), captured
     )
@@ -129,8 +129,8 @@ def test_two_runs_on_one_date_verify_against_their_own_inputs(tmp_path, make_obs
     Each published value must be checked against the run that produced it, not
     against the union, which never existed as a market state.
     """
-    morning = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
-    evening = datetime(2026, 8, 27, 20, 5, tzinfo=timezone.utc)
+    morning = datetime(2026, 8, 27, 14, 5, tzinfo=UTC)
+    evening = datetime(2026, 8, 27, 20, 5, tzinfo=UTC)
 
     publish_into_archive(tmp_path, build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}), morning)
     publish_into_archive(
@@ -149,7 +149,7 @@ def test_two_runs_on_one_date_verify_against_their_own_inputs(tmp_path, make_obs
 
 
 def test_missing_snapshot_is_unverifiable_not_a_pass(tmp_path, make_obs):
-    captured = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
+    captured = datetime(2026, 8, 27, 14, 5, tzinfo=UTC)
     path, _ = publish_into_archive(
         tmp_path, build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}), captured
     )
@@ -170,8 +170,8 @@ def test_missing_snapshot_is_unverifiable_not_a_pass(tmp_path, make_obs):
 
 
 def test_superseded_is_stamped_without_disturbing_prior_rows(tmp_path, make_obs):
-    morning = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
-    evening = datetime(2026, 8, 27, 20, 5, tzinfo=timezone.utc)
+    morning = datetime(2026, 8, 27, 14, 5, tzinfo=UTC)
+    evening = datetime(2026, 8, 27, 20, 5, tzinfo=UTC)
     publish_into_archive(tmp_path, build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}), morning)
     before = read_tape(tmp_path)[0]["value"]
 
@@ -187,7 +187,7 @@ def test_superseded_is_stamped_without_disturbing_prior_rows(tmp_path, make_obs)
 
 
 def test_rebuild_restores_the_publication_record(tmp_path, make_obs):
-    captured = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
+    captured = datetime(2026, 8, 27, 14, 5, tzinfo=UTC)
     publish_into_archive(tmp_path, build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}), captured)
 
     store = Store(tmp_path / "rebuilt.db")
@@ -208,7 +208,7 @@ def test_rebuild_recent_bounds_replay_but_keeps_the_whole_tape(tmp_path, make_ob
         publish_into_archive(
             tmp_path,
             build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}),
-            datetime(2026, 8, 27, 10 + hour, tzinfo=timezone.utc),
+            datetime(2026, 8, 27, 10 + hour, tzinfo=UTC),
             revision=hour,
         )
 
@@ -229,7 +229,7 @@ def test_live_tape_values_returns_the_highest_revision(tmp_path, make_obs):
         publish_into_archive(
             tmp_path,
             build(make_obs, {"a": 3.0 + revision, "b": 3.0 + revision, "c": 3.0 + revision, "d": 3.0 + revision}),
-            datetime(2026, 8, 27, 10 + revision, tzinfo=timezone.utc),
+            datetime(2026, 8, 27, 10 + revision, tzinfo=UTC),
             revision=revision,
         )
 
@@ -246,7 +246,7 @@ def test_publication_and_verification_share_one_preparation_path(tmp_path, make_
     recompute from a larger input set and the value would not reproduce --
     which is exactly what happened when these were two code paths.
     """
-    captured = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
+    captured = datetime(2026, 8, 27, 14, 5, tzinfo=UTC)
 
     honest = build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0})
     administered = []
@@ -268,7 +268,7 @@ def test_publication_and_verification_share_one_preparation_path(tmp_path, make_
 
     # The exclusion actually bit: the administered venue's spot quotes are gone.
     assert "policyvendor" in {p.provider for p in est.providers}
-    quotes, flags = prepare_quotes(honest + administered)
+    _, flags = prepare_quotes(honest + administered)
     assert any(f.code == "administered_pricing_excluded" for f in flags)
 
     report = verify(tmp_path)
@@ -284,8 +284,8 @@ def test_a_superseded_revision_losing_its_inputs_is_caught(tmp_path, make_obs):
     A superseded value is still a published value; someone may have settled
     against it, and its inputs have to stay on file.
     """
-    morning = datetime(2026, 8, 27, 14, 5, tzinfo=timezone.utc)
-    evening = datetime(2026, 8, 27, 20, 5, tzinfo=timezone.utc)
+    morning = datetime(2026, 8, 27, 14, 5, tzinfo=UTC)
+    evening = datetime(2026, 8, 27, 20, 5, tzinfo=UTC)
 
     first, _ = publish_into_archive(
         tmp_path, build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0}), morning

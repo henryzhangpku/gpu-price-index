@@ -28,9 +28,8 @@ from __future__ import annotations
 
 import csv
 import gzip
-import json
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from .models import RawObservation
@@ -75,7 +74,7 @@ def write_snapshot(
     root: Path, observations: list[RawObservation], captured_at: datetime | None = None
 ) -> Path:
     """Write one collection run to an immutable gzipped JSONL file."""
-    captured_at = captured_at or datetime.now(timezone.utc)
+    captured_at = captured_at or datetime.now(UTC)
     directory = root / SNAPSHOT_DIR
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{_stamp(captured_at)}.jsonl.gz"
@@ -97,7 +96,7 @@ def read_snapshot(path: Path) -> ArchivedRun:
     captured = min((o.observed_at for o in observations), default=None)
     if captured is None:
         captured = datetime.strptime(path.name.split(".")[0], "%Y-%m-%dT%H%M%SZ").replace(
-            tzinfo=timezone.utc
+            tzinfo=UTC
         )
     return ArchivedRun(path=path, captured_at=captured, observations=observations)
 

@@ -10,7 +10,7 @@ settlement price.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from .models import NormalizedQuote, QualityFlag, RawObservation
 from .spec import Gates
@@ -111,7 +111,7 @@ def check_capture_freshness(
     Curated entries legitimately carry an older event time; this catches a
     live feed serving a cached response.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stale_sources: dict[str, int] = {}
     for obs in observations:
         if obs.source.startswith("curated:"):

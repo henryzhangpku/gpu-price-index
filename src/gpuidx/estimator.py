@@ -33,6 +33,22 @@ MAD_TO_SIGMA = 1.4826
 #: Quotes further than this many robust sigmas from the median are screened.
 OUTLIER_SIGMAS = 3.0
 
+#: Used only when MAD is exactly zero and the sigma test is undefined. A
+#: provider more than this factor above *or below* an exact consensus is
+#: screened.
+#:
+#: Expressed as a ratio rather than a percentage deviation on purpose: a
+#: relative test is asymmetric, capped at 100% on the downside, so it can
+#: never catch a quote of one cent against a consensus of three dollars. A
+#: symmetric band in ratio space treats a 300x overstatement and a 300x
+#: understatement alike.
+#:
+#: Deliberately loose. Genuinely cheap capacity exists -- a spare-capacity
+#: marketplace runs at a third of a managed cloud without either being wrong
+#: -- so this is a backstop against the absurd, not a second opinion on where
+#: the market is.
+DEGENERATE_RATIO_TOLERANCE = 3.0
+
 
 @dataclass
 class ProviderAggregate:
@@ -120,11 +136,45 @@ def screen_outliers(aggregates: list[ProviderAggregate]) -> list[QualityFlag]:
     prices = [a.price for a in live]
     median = statistics.median(prices)
     mad = statistics.median([abs(p - median) for p in prices])
-    if mad == 0:
-        return []
-    sigma = mad * MAD_TO_SIGMA
 
     flags: list[QualityFlag] = []
+
+    if mad == 0:
+        # Half or more of the providers quote exactly the same price, so MAD
+        # collapses and there is no scale left to measure deviation against.
+        #
+        # This is not a rare corner. It is the single most dangerous
+        # configuration the screen faces: a tight consensus is precisely when
+        # one extreme quote moves the mean furthest. An earlier version
+        # returned here without screening anything, and four providers at
+        # $3.00 alongside one at $1,000,000 published a value of $200,002.
+        #
+        # With no scale available, fall back to a relative test against the
+        # consensus. Anything outside the band is, by construction, far from
+        # where the market agrees it is.
+        if median <= 0:
+            return flags
+        for agg in live:
+            if agg.price <= 0:
+                continue
+            ratio = max(agg.price / median, median / agg.price)
+            if ratio > DEGENERATE_RATIO_TOLERANCE:
+                agg.screened_out = True
+                agg.screen_reason = f"{ratio:.1f}x from an exact consensus"
+                flags.append(
+                    QualityFlag(
+                        severity="warn",
+                        code="outlier_screened_degenerate",
+                        detail=(
+                            f"{agg.provider} at ${agg.price:.2f} screened: "
+                            f"{ratio:.1f}x from a consensus of ${median:.2f}, "
+                            f"where dispersion is zero and MAD gives no scale"
+                        ),
+                    )
+                )
+        return flags
+
+    sigma = mad * MAD_TO_SIGMA
     for agg in live:
         deviation = abs(agg.price - median) / sigma
         if deviation > OUTLIER_SIGMAS:

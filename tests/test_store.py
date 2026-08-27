@@ -7,7 +7,7 @@ afterwards. That is the difference between a series and a settlement record.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -73,14 +73,14 @@ def test_as_of_returns_what_was_known_at_the_time(store, make_obs):
     # A settlement agent asking what the tape said before the correction must
     # get the original number, not the corrected one.
     assert store.as_of("GIX-H100", DAY, between)["value"] == pytest.approx(3.0)
-    later = datetime.now(timezone.utc) + timedelta(days=1)
+    later = datetime.now(UTC) + timedelta(days=1)
     assert store.as_of("GIX-H100", DAY, later)["value"] == pytest.approx(4.0)
 
 
 def test_as_of_before_first_publication_returns_nothing(store, make_obs):
     est = build(make_obs, {"a": 3.0, "b": 3.1, "c": 2.9, "d": 3.0})
     store.publish("GIX-H100", DAY, est, run_id=None)
-    before = datetime.now(timezone.utc) - timedelta(days=1)
+    before = datetime.now(UTC) - timedelta(days=1)
     assert store.as_of("GIX-H100", DAY, before) is None
 
 

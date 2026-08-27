@@ -44,6 +44,9 @@ jobs:
       - name: Install project
         run: uv sync --frozen
 
+      - name: Lint
+        run: uvx ruff check src tests
+
       - name: Run tests
         # A methodology change that breaks its own tests must not reach the
         # tape. The gates protect against bad data; this protects against bad code.

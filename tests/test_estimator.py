@@ -142,3 +142,90 @@ def test_empty_input_withholds_without_crashing(make_obs):
     result = estimate("GIX-H100", [], GATES)
     assert result.value is None
     assert not result.passed
+
+
+def test_extreme_quote_is_screened_even_when_the_market_agrees_exactly(make_obs):
+    """Regression: MAD collapses to zero when providers quote identically.
+
+    An earlier version returned from the screen without doing anything when
+    MAD was zero, which is the worst possible moment to stop screening -- a
+    tight consensus is exactly when one extreme quote drags the mean furthest.
+    Four providers at $3.00 and one at $1,000,000 published $200,002.
+    """
+    honest = [
+        make_obs(source=name, price_per_gpu=3.00, sku=f"{name}-{i}")
+        for name in ("a", "b", "c", "d")
+        for i in range(3)
+    ]
+    absurd = [make_obs(source="manipulator", price_per_gpu=1_000_000.0, sku=f"m-{i}") for i in range(3)]
+
+    result = estimate("GIX-H100", quotes_from(honest + absurd), GATES)
+
+    screened = [p for p in result.providers if p.screened_out]
+    assert [p.provider for p in screened] == ["manipulator"]
+    assert result.value == pytest.approx(3.00)
+    assert any(f.code == "outlier_screened_degenerate" for f in result.flags)
+
+
+def test_exact_consensus_alone_screens_nobody(make_obs):
+    """The fallback must not start rejecting a market that simply agrees."""
+    observations = [
+        make_obs(source=name, price_per_gpu=3.00, sku=f"{name}-{i}")
+        for name in ("a", "b", "c", "d", "e")
+        for i in range(3)
+    ]
+    result = estimate("GIX-H100", quotes_from(observations), GATES)
+
+    assert not any(p.screened_out for p in result.providers)
+    assert result.value == pytest.approx(3.00)
+    assert result.passed
+
+
+def test_genuinely_cheap_capacity_survives_an_exact_consensus(make_obs):
+    """Half the price of a managed cloud is market structure, not manipulation.
+
+    A spare-capacity marketplace really does clear well below a managed
+    provider. The degenerate screen is a backstop against the absurd, so it
+    has to leave a real discount alone even when the rest agree exactly.
+    """
+    observations = [
+        make_obs(source=name, price_per_gpu=4.00, sku=f"{name}-{i}")
+        for name in ("a", "b", "c", "d")
+        for i in range(3)
+    ] + [make_obs(source="marketplace", price_per_gpu=2.00, sku=f"m-{i}") for i in range(3)]
+
+    result = estimate("GIX-H100", quotes_from(observations), GATES)
+    assert not any(p.screened_out for p in result.providers)
+
+
+def test_degenerate_screen_is_symmetric(make_obs):
+    """A near-zero quote must be caught as readily as an enormous one.
+
+    A percentage-deviation test caps at 100% on the downside and could never
+    screen one cent against a three dollar consensus. The band is a ratio for
+    exactly this reason.
+    """
+    honest = [
+        make_obs(source=name, price_per_gpu=3.00, sku=f"{name}-{i}")
+        for name in ("a", "b", "c", "d")
+        for i in range(3)
+    ]
+    floor_it = [make_obs(source="lowballer", price_per_gpu=0.01, sku=f"l-{i}") for i in range(3)]
+
+    result = estimate("GIX-H100", quotes_from(honest + floor_it), GATES)
+    screened = [p for p in result.providers if p.screened_out]
+    assert [p.provider for p in screened] == ["lowballer"]
+    assert result.value == pytest.approx(3.00)
+
+
+def test_degenerate_screen_handles_a_zero_median(make_obs):
+    """A zero median would divide by zero in the relative test."""
+    # Prices must be positive to normalise at all, so drive the median as low
+    # as the model permits and confirm nothing raises.
+    observations = [
+        make_obs(source=name, price_per_gpu=1e-9, sku=f"{name}-{i}")
+        for name in ("a", "b", "c", "d", "e")
+        for i in range(3)
+    ]
+    result = estimate("GIX-H100", quotes_from(observations), GATES)
+    assert result.value is not None

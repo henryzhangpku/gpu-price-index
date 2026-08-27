@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -9,7 +9,7 @@ from gpuidx.models import Commitment, FormFactor, Interconnect, RawObservation, 
 
 @pytest.fixture
 def now() -> datetime:
-    return datetime(2026, 8, 27, 12, 0, tzinfo=timezone.utc)
+    return datetime(2026, 8, 27, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -45,7 +45,7 @@ class Provider(ABC):
 
     @staticmethod
     def now() -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     @staticmethod
     def infer_form_factor(*texts: str | None) -> FormFactor:
@@ -61,7 +61,7 @@ class Provider(ABC):
         blob = " ".join(t for t in texts if t).lower()
         if "nvlink" in blob or "nvl" in blob or "sxm" in blob:
             return Interconnect.NVLINK
-        if "infiniband" in blob or "ib" == blob.strip():
+        if "infiniband" in blob or blob.strip() == "ib":
             return Interconnect.INFINIBAND
         if "ethernet" in blob or "roce" in blob:
             return Interconnect.ETHERNET

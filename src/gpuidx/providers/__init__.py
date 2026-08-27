@@ -12,7 +12,7 @@ from .runpod import RunPod
 from .shadeform import Shadeform
 from .vastai import VastAI
 
-__all__ = ["Provider", "collect_all", "default_providers", "CollectionRun"]
+__all__ = ["CollectionRun", "Provider", "collect_all", "default_providers"]
 
 
 def default_providers() -> list[Provider]:
@@ -41,7 +41,7 @@ def collect_all(providers: list[Provider] | None = None) -> CollectionRun:
         for provider in providers:
             try:
                 observations = provider.collect(client)
-            except Exception as exc:  # noqa: BLE001 - adapters must not crash the run
+            except Exception as exc:
                 run.flags.append(
                     QualityFlag(
                         severity="error",
