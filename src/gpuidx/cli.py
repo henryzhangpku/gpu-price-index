@@ -26,10 +26,11 @@ from .forward import (
     implied_decline,
     implied_forward_level,
     load_committed_use,
-    sensitivity,
+    premium_sensitivity,
 )
 from .pipeline import run_daily
 from .reproduce import coverage, rebuild, verify
+from .sensitivity import exposure_all
 from .spec import CONTRACTS, DEFAULT_GATES
 from .store import Store
 
@@ -436,7 +437,7 @@ def forward_cmd(
 
     for point in sorted(points, key=lambda p: (p.vendor, p.tenor_years)):
         cells = [
-            f"{row['annual_decline']:.1%}" for row in sensitivity(point)
+            f"{row['annual_decline']:.1%}" for row in premium_sensitivity(point)
         ]
         table.add_row(
             point.vendor,
@@ -479,6 +480,75 @@ def forward_cmd(
             "spread means lock-in cost grows with term, which it plainly does, so the\n"
             "constant-rate model is the floor of a more honest term-dependent one.[/]"
         )
+
+
+@app.command("sensitivity")
+def sensitivity_cmd(
+    live: bool = typer.Option(
+        False, help="Collect fresh instead of reading the newest archived snapshot"
+    ),
+) -> None:
+    """Measure how much of each fixing rests on the adjustment schedule.
+
+    Section 4 of the methodology concedes its factors are judgement and bounds
+    them. This answers the question that concession leaves open: how far does
+    the fixing actually move because of them?
+    """
+    from .archive import list_snapshots, read_snapshot
+    from .normalize import prepare_quotes
+    from .providers import collect_all
+
+    if live:
+        with console.status("collecting from venues..."):
+            observations = collect_all().observations
+        provenance = "live collection"
+    else:
+        snapshots = list_snapshots(ARCHIVE_ROOT)
+        if not snapshots:
+            console.print("[yellow]no archived snapshot; pass --live[/]")
+            raise typer.Exit(1)
+        observations = read_snapshot(snapshots[-1]).observations
+        provenance = snapshots[-1].name
+
+    quotes, _ = prepare_quotes(observations)
+    rows = exposure_all(quotes, DEFAULT_GATES)
+
+    console.print(
+        Panel(
+            "The counterfactual recomputes each fixing from inputs that conformed to\n"
+            "the benchmark contract as observed, discarding every adjusted one. It is\n"
+            "not a better estimate — it throws away most of the sample and leans on\n"
+            "whichever venues happen to sell the benchmark configuration. It measures\n"
+            "dependence on judgement, and nothing else.",
+            title=f"adjustment exposure ({provenance})",
+            expand=False,
+        )
+    )
+
+    table = Table(header_style="bold")
+    for column in ("index", "published", "conforming only", "shift", "conforming", "adj weight", "still publishable"):
+        table.add_column(column, justify="left" if column == "index" else "right", no_wrap=True)
+
+    for row in rows:
+        table.add_row(
+            row.index_code,
+            _fmt(row.published),
+            _fmt(row.conforming_only),
+            f"{row.shift:+.1%}" if row.shift is not None else "--",
+            f"{row.conforming_quotes}/{row.total_quotes}",
+            f"{row.weight_share_adjusted:.0%}",
+            "[green]yes[/]" if row.publishable_without_adjustment else "[yellow]no[/]",
+        )
+    console.print(table)
+
+    factors: dict[str, float] = {}
+    for row in rows:
+        for name, share in row.by_factor.items():
+            factors[name] = max(factors.get(name, 0.0), share)
+    if factors:
+        console.print("\n[bold]share of inputs touched by each factor, highest across indices[/]")
+        for name, share in sorted(factors.items(), key=lambda kv: -kv[1]):
+            console.print(f"  {name:14} {share:.0%}")
 
 
 if __name__ == "__main__":

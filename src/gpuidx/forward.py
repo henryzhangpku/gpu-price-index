@@ -137,7 +137,7 @@ def annual_decline_pct(rate: float) -> float:
     return 1.0 - math.exp(-rate)
 
 
-def sensitivity(
+def premium_sensitivity(
     point: TermPoint, risk_premiums: list[float] | None = None
 ) -> list[dict]:
     """How much the implied decline moves with the unidentified assumption."""

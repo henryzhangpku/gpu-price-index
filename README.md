@@ -59,6 +59,7 @@ uv run gpuidx rebuild                      # restore the database from the archi
 uv run gpuidx verify                       # recompute every value from its inputs
 uv run gpuidx calibrate                    # test the adjustment factors against venue pricing
 uv run gpuidx forward --spot 3.05          # what committed-use discounts do and don't imply
+uv run gpuidx sensitivity                  # how much of each fixing rests on judgement
 ```
 
 `audit` is the one worth looking at. It shows every contributing provider,
@@ -173,6 +174,21 @@ Nothing about the shape of the payload tells you which kind you have.
 an identical H100 fixing but moved A100 8%, purely because contributing
 providers went 9 to 8. Nothing about the market changed. A fixed capture window
 is a prerequisite before any daily delta is read as signal.
+
+**Four of the five indices exist only because of the adjustment schedule.**
+Recomputing each fixing from inputs that conformed to the benchmark contract
+as observed — discarding every adjusted one — leaves `GIX-H100` standing and
+moves it just **+2.8%**, even though 82% of its contributing weight rests on
+adjusted inputs. The other four have no counterfactual at all: too few venues
+sell the benchmark configuration natively to clear the gates. Those indices
+are produced by the adjustment schedule rather than merely leaning on it, and
+that is a weaker claim than the one H100 supports.
+
+It also prices an argument the methodology was having with itself. Region is
+screened rather than adjusted because a scalar cannot honestly collapse it,
+and the same argument applies to form factor, which *is* adjusted. Being
+consistent means screening both — which would leave one index standing and
+remove four. Naming that cost beats resolving it by preference.
 
 **There is no GPU forward curve, and the usual proxy does not work.** A
 GPU-hour is not storable, so no-arbitrage pins nothing and `F(T) = E[S(T)] +

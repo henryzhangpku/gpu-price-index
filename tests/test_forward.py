@@ -20,7 +20,7 @@ from gpuidx.forward import (
     consistency_check,
     implied_decline,
     implied_forward_level,
-    sensitivity,
+    premium_sensitivity,
 )
 
 
@@ -104,7 +104,7 @@ def test_projection_is_monotone_and_decaying():
 
 def test_sensitivity_reports_every_assumption():
     point = TermPoint(vendor="v", tenor_years=1.0, price_ratio=0.60)
-    rows = sensitivity(point, [0.0, 0.10, 0.20])
+    rows = premium_sensitivity(point, [0.0, 0.10, 0.20])
     assert [r["risk_premium"] for r in rows] == [0.0, 0.10, 0.20]
     assert all(0.0 <= r["annual_decline"] <= 1.0 for r in rows)
 

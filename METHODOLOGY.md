@@ -115,6 +115,31 @@ variation across a venue's SKUs — and every exclusion is flagged on the run.
 **The spot factor of 1.45 therefore remains asserted and unvalidated**, and
 should be read as the weakest number in this document.
 
+**How much the schedule actually moves the fixing** is measured by
+`gpuidx sensitivity`, which recomputes each index from inputs that conformed
+to the benchmark contract as observed and discards every adjusted one:
+
+| Index | Published | Conforming only | Shift | Conforming inputs | Adjusted weight |
+|---|---|---|---|---|---|
+| GIX-H100 | $3.115 | $3.029 | **+2.8%** | 10 of 52 | 82% |
+| GIX-H200 | $3.400 | — | — | 6 of 14 | 50% |
+| GIX-A100 | $2.179 | — | — | 7 of 33 | 86% |
+| GIX-B200 | $5.676 | — | — | 4 of 13 | 60% |
+| GIX-MI300X | — | — | — | 0 of 2 | 100% |
+
+Two readings, and the second is uncomfortable.
+
+For `GIX-H100` the schedule is influential but not decisive: 82% of
+contributing weight rests on adjusted inputs, yet removing them entirely moves
+the fixing by 2.8%. The adjustments are doing what they are supposed to do —
+making heterogeneous supply comparable — rather than manufacturing the answer.
+
+For every other index there is **no counterfactual at all**. Too few venues
+sell the benchmark configuration natively to clear the publication gates, so
+those indices do not merely lean on the adjustment schedule; they exist
+because of it. That is a materially different claim from the one `GIX-H100`
+supports, and it is disclosed rather than averaged away.
+
 **Region is screened, not adjusted.** Cross-border price differences reflect
 power costs, tax regimes, and latency to demand — a single scalar cannot
 honestly collapse that. Disclosed non-US capacity is discarded. Venues that
@@ -306,16 +331,26 @@ marketing document.
    for verifying inputs at the source, and the screen log must be reviewed
    rather than treated as self-healing.
 
-9. **Screening and adjusting are applied inconsistently.** Region is screened
-   because a scalar cannot honestly collapse power and tax regimes, and that
-   reasoning applies just as well to form factor: a PCIe card on Ethernet is a
-   different good from an SXM card on an NVLink fabric, not a discounted
-   version of one. The methodology nonetheless adjusts form factor and
-   interconnect while screening region. The consistent alternative is to
-   restrict inputs to SXM and discard PCIe entirely, trading breadth for the
-   removal of an unvalidatable judgement from the settlement path. For a
-   benchmark intended to settle contracts that is probably the right trade,
-   and it is not the one currently implemented.
+9. **Screening and adjusting are applied inconsistently, and the consistent
+   alternative would remove most of the coverage.** Region is screened because
+   a scalar cannot honestly collapse power and tax regimes, and that reasoning
+   applies just as well to form factor: a PCIe card on Ethernet is a different
+   good from an SXM card on an NVLink fabric, not a discounted version of one.
+   The methodology nonetheless adjusts form factor and interconnect while
+   screening region.
+
+   The obvious remedy is to screen instead of adjust — restrict inputs to the
+   benchmark configuration and discard the rest. The sensitivity measurement
+   in section 4 shows what that costs: only `GIX-H100` has enough natively
+   conforming supply to clear its gates, and the other four indices would stop
+   publishing entirely. Consistency is available at the price of 80% of the
+   product.
+
+   That is a genuine trade rather than an oversight, and the position taken
+   here is to adjust, disclose the exposure per index, and publish the
+   counterfactual where one exists. A settlement-grade version might well
+   choose differently for `GIX-H100`, where the whole schedule is worth 2.8%,
+   and decline to publish the rest at all.
 
 ## 11. Changing this document
 
