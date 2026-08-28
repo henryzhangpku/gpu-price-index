@@ -280,7 +280,49 @@ Two checks that the properties are worth having:
   invariant was wrong. Writing the property forced the invariant to be stated
   in the terms the code actually uses.
 
-## 8. Nothing here is a transaction
+## 8. Four of the five indices exist only because of the adjustment schedule
+
+The methodology concedes that its adjustment factors are judgement, bounds
+them, and caps their cumulative effect. That is a defence of the containment,
+not of the numbers, and it leaves the question a counterparty would actually
+ask: *how far does the fixing move because of them?*
+
+`gpuidx sensitivity` recomputes each index using only inputs that conformed to
+the benchmark contract as observed, discarding every adjusted one:
+
+| Index | Published | Conforming only | Shift | Conforming inputs | Adjusted weight |
+|---|---|---|---|---|---|
+| GIX-H100 | $3.115 | $3.029 | **+2.8%** | 10 of 52 | 82% |
+| GIX-H200 | $3.400 | — | — | 6 of 14 | 50% |
+| GIX-A100 | $2.179 | — | — | 7 of 33 | 86% |
+| GIX-B200 | $5.676 | — | — | 4 of 13 | 60% |
+| GIX-MI300X | — | — | — | 0 of 2 | 100% |
+
+`GIX-H100` comes out well. Four fifths of its contributing weight rests on
+adjusted inputs, and removing all of them moves the fixing 2.8%. The
+adjustments are making heterogeneous supply comparable rather than
+manufacturing an answer, which is what they are for.
+
+The other four have **no counterfactual at all** — too few venues sell the
+benchmark configuration natively to clear the publication gates. Those indices
+do not lean on the adjustment schedule; they are produced by it. That is a
+materially weaker claim than the one `GIX-H100` supports, and consumers of the
+two should not treat them as the same kind of number.
+
+This also settles an argument the methodology was having with itself. Region
+is screened rather than adjusted, on the grounds that a scalar cannot honestly
+collapse it, and the identical argument applies to form factor — which is
+adjusted. The consistent position is to screen both and discard non-conforming
+supply. The measurement prices that consistency: it would leave one index
+standing and remove the other four. That is a real trade, not an oversight, and
+naming its cost is more useful than resolving it by preference.
+
+The counterfactual is not a better estimate, and the report says so. Dropping
+adjusted inputs throws away most of the sample and biases toward whichever
+venues happen to sell the benchmark configuration. It measures dependence on
+judgement, and nothing else.
+
+## 9. Nothing here is a transaction
 
 Every input is an offer or a rate card. Vast.ai offers are executable — a buyer
 could transact against them right now — but nobody in this data set observes a
