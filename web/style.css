@@ -317,7 +317,9 @@ pre.sample b { color: var(--screened); font-weight: 600; }
 
 /* ---------- dashboard ---------- */
 
-.dash { padding: 34px 0 0; }
+/* Only the top. A padding shorthand here would land on the same element as
+   .wrap and silently zero its side padding, pushing the page to both edges. */
+.dash { padding-top: 34px; }
 .dash-head { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 26px; }
 .dash-head h1 { font-size: 27px; margin: 0; }
 .dash-head p { margin: 4px 0 0; font-size: 15px; color: var(--muted); font-family: var(--ui); }
