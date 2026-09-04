@@ -52,32 +52,40 @@ of the work in a benchmark is deciding what does not count.
 
 ```mermaid
 flowchart TB
-    SRC["~20 clouds via 5 adapters"] --> OBS["raw observation<br/>exactly as the venue stated it"]
-    OBS -.written first.-> SNAP[("snapshots/*.jsonl.gz<br/>immutable, never modified")]
+    SRC["~20 clouds · 5 adapters"] --> OBS["raw observation"]
+    OBS -. "written first" .-> SNAP[("snapshot · immutable")]
 
-    OBS --> ADM{"administered price?<br/>CV about 0 across a venue's SKUs"}
-    ADM -- yes --> DROP[["discarded"]]
-    ADM -- no --> MATCH{"matches a benchmark contract?"}
-    MATCH -- no --> DROP
-    MATCH -- yes --> REG{"US region?"}
-    REG -- "disclosed non-US" --> DROP
-    REG -- "yes, or undisclosed" --> REST["restate to the benchmark good<br/>form factor x fabric x commitment x node size"]
-    REST --> CAP{"cumulative adjustment 1.75x or less?"}
-    CAP -- no --> DROP
-    CAP -- yes --> NQ["normalised quote"]
+    OBS --> A{"administered?"}
+    A -- yes --> DROP[["discarded"]]
+    A -- no --> B{"matches a contract?"}
+    B -- no --> DROP
+    B -- yes --> C{"US region?"}
+    C -- "disclosed non-US" --> DROP
+    C -- "yes / undisclosed" --> D["restate to the benchmark good"]
+    D --> E{"over 1.75x cumulative?"}
+    E -- yes --> DROP
+    E -- no --> NQ["normalised quote"]
 
-    NQ --> MED["collapse to provider medians<br/>forty SKUs from one venue is one vote"]
-    MED --> MAD{"within 3 robust sigma?<br/>ratio band when MAD is zero"}
-    MAD -- no --> SCREEN[["screened, and recorded"]]
-    MAD -- yes --> WT["weight by tier 1.00 / 0.60 / 0.25<br/>cap any one provider at 35%, iteratively"]
-    WT --> VAL["weighted mean: candidate value"]
+    NQ --> MED["collapse to provider medians"]
+    MED --> MAD{"within 3 robust sigma?"}
+    MAD -- no --> SCR[["screened, and recorded"]]
+    MAD -- yes --> WT["tier weights, 35% cap"]
+    WT --> VAL["weighted mean · candidate value"]
 
-    VAL --> GATE{"every enabled gate holds?<br/>4+ providers, 8+ observations, dispersion 0.45 or less"}
-    GATE -- yes --> PUB["published"]
-    GATE -- no --> WH["withheld<br/>failing gate recorded"]
-    PUB --> TAPE[("series/index_values.csv<br/>append-only tape")]
+    VAL --> G{"every enabled gate holds?"}
+    G -- yes --> PUB["published"]
+    G -- no --> WH["withheld · failing gate recorded"]
+    PUB --> TAPE[("append-only tape")]
     WH --> TAPE
 ```
+
+| Test | Passes when | Why it exists |
+|---|---|---|
+| administered | the venue's SKUs do not all sit at one fixed ratio | a price that is a function of another price in the sample is a duplicate, not evidence |
+| contract match | the venue's GPU string maps to exactly one benchmark | H100 NVL and H200 are one substring apart; a silent mismatch corrupts two indices |
+| region | US, or the venue publishes no region at all | power and tax regimes are not a scalar, so region is screened rather than adjusted |
+| 1.75x cap | form factor, fabric, commitment and node size multiply to 1.75 or less | past that the number describes the adjustment schedule rather than the market |
+| 3 robust sigma | the provider sits near the cross-provider median | MAD has a 50% breakdown point, so the screen cannot be defeated by the outlier it catches |
 
 Note where `withheld` goes. A refusal to print is written to the tape as a row
 like any other, carrying the gate that caused it. A gap in the series is a
