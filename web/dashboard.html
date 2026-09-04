@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard &mdash; GPU Rental Price Benchmark</title>
+<meta name="description" content="Every provider behind every fixing: weights, outlier screens, publication gates, and the adjustment applied to each contributing quote.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="disclaimer">
+  A demonstration of what a settlement-grade compute benchmark requires. Do not settle anything against these values.
+</div>
+
+<div class="topbar">
+  <a class="brand" href="index.html">gpu<span>idx</span></a>
+  <nav>
+    <a href="index.html">Method</a>
+    <a href="dashboard.html" aria-current="page">Dashboard</a>
+    <a href="https://github.com/henryzhangpku/gpu-price-index">Source</a>
+    <button class="theme-toggle" type="button">Dark</button>
+  </nav>
+</div>
+
+<div class="wrap dash">
+
+  <div class="dash-head">
+    <div>
+      <h1>Fixing detail</h1>
+      <p id="dash-sub">loading&hellip;</p>
+    </div>
+    <div class="picker" id="picker"></div>
+  </div>
+
+  <div class="panel">
+    <header>
+      <h2>Daily fixing</h2>
+      <span class="note" id="board-meta"></span>
+    </header>
+    <div id="board-table"><div class="loading">reading the tape&hellip;</div></div>
+  </div>
+
+  <div id="detail"></div>
+
+  <footer class="site">
+    <p style="margin:0;">
+      Everything here is derived from the archived snapshots and the append-only tape by
+      <code>gpuidx export-web</code>, and recomputed through the same path
+      <code>gpuidx verify</code> uses. The page never computes a price.
+    </p>
+  </footer>
+
+</div>
+
+<script type="module">
+import {
+  loadBundle, showError, initTheme, renderBoard, wireBoard,
+  fmtUsd, fmtPct, fmtNum, fmtSigned, shortDate, longDate, escapeHtml
+} from "./app.js";
+
+initTheme();
+
+const boardTable = document.getElementById("board-table");
+const detail = document.getElementById("detail");
+
+/* ---------- series chart ----------
+ * The line breaks on a withheld day rather than bridging it. A bridged gap
+ * would draw a price that was never published, which is the visual form of
+ * exactly the behaviour the gates exist to prevent.
+ */
+function chart(entries) {
+  const W = 900, H = 260;
+  const pad = { t: 18, r: 18, b: 30, l: 56 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+
+  const values = entries.filter((e) => e.value !== null).map((e) => e.value);
+  if (!values.length) {
+    return `<div class="empty">No published value in this series yet &mdash; every day was withheld.</div>`;
+  }
+
+  let lo = Math.min(...values), hi = Math.max(...values);
+  if (hi === lo) { lo -= lo * 0.05 || 0.5; hi += hi * 0.05 || 0.5; }
+  const span = hi - lo;
+  lo -= span * 0.18; hi += span * 0.18;
+
+  const n = entries.length;
+  const x = (i) => pad.l + (n === 1 ? iw / 2 : (i * iw) / (n - 1));
+  const y = (v) => pad.t + ih - ((v - lo) / (hi - lo)) * ih;
+
+  // horizontal grid + y labels
+  const ticks = 4;
+  let grid = "";
+  for (let i = 0; i <= ticks; i++) {
+    const v = lo + ((hi - lo) * i) / ticks;
+    const yy = y(v);
+    grid += `<line class="grid" x1="${pad.l}" y1="${yy}" x2="${W - pad.r}" y2="${yy}"></line>`;
+    grid += `<text class="axis" x="${pad.l - 9}" y="${yy + 3.5}" text-anchor="end">${v.toFixed(2)}</text>`;
+  }
+
+  // segments of consecutive published days
+  const segments = [];
+  let current = [];
+  entries.forEach((e, i) => {
+    if (e.value === null) {
+      if (current.length) segments.push(current);
+      current = [];
+    } else {
+      current.push([x(i), y(e.value)]);
+    }
+  });
+  if (current.length) segments.push(current);
+
+  const lines = segments.map((seg) =>
+    seg.length === 1
+      ? `<circle class="dot" cx="${seg[0][0]}" cy="${seg[0][1]}" r="3.5"></circle>`
+      : `<path class="line" d="M ${seg.map((p) => p.join(" ")).join(" L ")}"></path>`
+  ).join("");
+
+  const marks = entries.map((e, i) => {
+    const xx = x(i);
+    if (e.value === null) {
+      return `<line class="gap" x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${pad.t + ih}"></line>
+              <circle class="gapdot" cx="${xx}" cy="${pad.t + ih}" r="4"></circle>
+              <title>${e.index_date}: withheld — ${escapeHtml(e.withheld_reason || "gated")}</title>`;
+    }
+    return `<circle class="dot" cx="${xx}" cy="${y(e.value)}" r="3.5">
+              <title>${e.index_date}: ${fmtUsd(e.value)}</title>
+            </circle>`;
+  }).join("");
+
+  const step = Math.max(1, Math.ceil(n / 8));
+  const xlabels = entries.map((e, i) =>
+    i % step === 0 || i === n - 1
+      ? `<text class="axis" x="${x(i)}" y="${H - 9}" text-anchor="middle">${shortDate(e.index_date)}</text>`
+      : ""
+  ).join("");
+
+  return `<div class="chart-wrap">
+      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img"
+           aria-label="Published fixings over time, with gaps where the index was withheld">
+        ${grid}${lines}${marks}${xlabels}
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i></i> published fixing</span>
+      <span><i class="gap"></i> withheld &mdash; no value printed</span>
+    </div>`;
+}
+
+/* ---------- detail panels ---------- */
+
+function providersPanel(idx) {
+  const est = idx.estimate;
+  const live = est.providers.filter((p) => !p.screened_out);
+  const maxWeight = Math.max(...live.map((p) => p.weight), 0.0001);
+  const capped = new Set(
+    est.flags.filter((f) => f.code === "provider_weight_capped")
+      .map((f) => f.detail.split(" ")[0])
+  );
+
+  const rows = est.providers.map((p) => `
+    <tr class="${p.screened_out ? "screened" : ""}">
+      <td><span class="code">${escapeHtml(p.provider)}</span></td>
+      <td class="r num">${fmtUsd(p.price)}</td>
+      <td class="r num">${p.quote_count}</td>
+      <td><span class="tierpill" data-tier="${p.tier}">tier ${p.tier}</span></td>
+      <td>${p.screened_out ? "" : `<div class="bar ${capped.has(p.provider) ? "capped" : ""}">
+             <i style="width:${Math.max(3, (p.weight / maxWeight) * 100).toFixed(1)}%"></i></div>`}</td>
+      <td class="r num">${p.screened_out ? "--" : fmtPct(p.share, 1)}</td>
+      <td class="detail" style="font-family:var(--mono);font-size:12px;color:var(--muted)">
+        ${escapeHtml(p.screen_reason || (capped.has(p.provider) ? "weight capped" : ""))}
+      </td>
+    </tr>`).join("");
+
+  return `<div class="panel">
+    <header>
+      <h2>Contributions</h2>
+      <span class="note">${live.length} contributing · ${est.providers.length - live.length} screened</span>
+    </header>
+    <div class="scroll"><table>
+      <thead><tr>
+        <th>provider</th><th class="r">median</th><th class="r">quotes</th>
+        <th>tier</th><th>weight</th><th class="r">share</th><th>note</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function gatesPanel(idx) {
+  const est = idx.estimate;
+  const gates = est.gates.map((g) => `
+    <div class="gate ${g.passed ? "pass" : "fail"}">
+      <span class="mark">${g.passed ? "✓" : "✕"}</span>
+      <span>${escapeHtml(g.name.replace(/_/g, " "))}</span>
+      <span class="detail">${escapeHtml(g.detail)}</span>
+    </div>`).join("");
+
+  const verdict = idx.status === "published"
+    ? `<p style="margin:0 0 16px;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+         All gates cleared. Published at <span class="mono">${fmtUsd(idx.published_value)}</span>.</p>`
+    : `<p style="margin:0 0 16px;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+         The estimator produced <span class="mono">${fmtUsd(est.value)}</span> and it was
+         <strong style="color:var(--withheld)">not published</strong>. A gap is a fact about
+         the market; a number here would be a fiction about it.</p>`;
+
+  return `<div class="panel">
+    <header><h2>Publication gates</h2><span class="note">all must hold</span></header>
+    <div class="body">${verdict}<div class="gates">${gates}</div></div>
+  </div>`;
+}
+
+function exposurePanel(idx) {
+  const e = idx.exposure;
+  const factors = Object.entries(e.by_factor || {}).sort((a, b) => b[1] - a[1]);
+  const counterfactual = e.conforming_only === null
+    ? `<p style="margin:0;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+         There is <strong>no counterfactual</strong> for this index: too few venues sell the
+         benchmark configuration natively to clear the gates without adjusted inputs. It does
+         not merely lean on the adjustment schedule &mdash; it exists because of it.</p>`
+    : `<p style="margin:0;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+         Recomputed from natively conforming inputs alone:
+         <span class="mono">${fmtUsd(e.conforming_only)}</span>, a shift of
+         <span class="mono">${fmtSigned(e.shift)}</span>. The adjustments are making
+         heterogeneous supply comparable rather than manufacturing the answer.</p>`;
+
+  return `<div class="panel">
+    <header>
+      <h2>Dependence on the adjustment schedule</h2>
+      <span class="note">${e.conforming_quotes}/${e.total_quotes} inputs conformed as observed</span>
+    </header>
+    <div class="body">
+      ${counterfactual}
+      <div class="stat-row" style="margin-top:18px;">
+        <div class="stat"><div class="k">adjusted weight</div>
+          <div class="v">${fmtPct(e.weight_share_adjusted)}</div>
+          <div class="n">of contributing weight</div></div>
+        <div class="stat"><div class="k">conforming</div>
+          <div class="v">${e.conforming_quotes}/${e.total_quotes}</div>
+          <div class="n">inputs needing no restatement</div></div>
+        <div class="stat"><div class="k">publishable without</div>
+          <div class="v">${e.publishable_without_adjustment ? "yes" : "no"}</div>
+          <div class="n">would clear gates on conforming inputs alone</div></div>
+      </div>
+      ${factors.length ? `<p style="margin:18px 0 8px;font-family:var(--ui);font-size:12px;
+          letter-spacing:.13em;text-transform:uppercase;color:var(--muted)">share of inputs touched</p>
+        <div class="adjlist">${factors.map(([k, v]) =>
+          `<div><b>${escapeHtml(k.replace(/_/g, " "))}</b> — ${fmtPct(v)}</div>`).join("")}</div>` : ""}
+    </div>
+  </div>`;
+}
+
+function quotesPanel(idx) {
+  if (!idx.quotes.length) {
+    return `<div class="panel"><header><h2>Contributing quotes</h2></header>
+      <div class="empty">No quote matched this contract in the latest run.</div></div>`;
+  }
+  const rows = idx.quotes.map((q) => `
+    <tr>
+      <td><span class="code">${escapeHtml(q.source)}</span></td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${escapeHtml(q.source_sku)}</td>
+      <td class="r num">${fmtUsd(q.raw)}</td>
+      <td class="r num">${fmtUsd(q.normalized)}</td>
+      <td class="r num" style="color:${q.total_adjustment > 1.0001 ? "var(--withheld)" : "var(--muted)"}">
+        ${q.total_adjustment.toFixed(3)}×</td>
+      <td class="adjlist">${
+        q.adjustments.length
+          ? q.adjustments.map((a) => `<b>${escapeHtml(a.name.replace(/_/g, " "))}</b> ${a.factor.toFixed(2)}`).join(" · ")
+          : "<span style='color:var(--published)'>conforms as observed</span>"
+      }</td>
+    </tr>`).join("");
+
+  return `<div class="panel">
+    <header>
+      <h2>Contributing quotes</h2>
+      <span class="note">${idx.quotes.length} normalised inputs · every restatement recorded</span>
+    </header>
+    <div class="scroll"><table>
+      <thead><tr>
+        <th>source</th><th>sku</th><th class="r">as quoted</th>
+        <th class="r">restated</th><th class="r">factor</th><th>adjustments</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function revisionsPanel(entries) {
+  const corrected = entries.filter((e) => e.revision > 0 || e.superseded_at);
+  if (!corrected.length) return "";
+  const rows = corrected.map((e) => `
+    <tr>
+      <td class="num">${e.index_date}</td>
+      <td class="r num">rev ${e.revision}</td>
+      <td class="r num">${e.value === null ? "--" : fmtUsd(e.value)}</td>
+      <td>${e.superseded_at
+        ? `<span class="status withheld">superseded</span>`
+        : `<span class="status published">live</span>`}</td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">
+        ${escapeHtml(e.revision_reason || "")}</td>
+    </tr>`).join("");
+
+  return `<div class="panel">
+    <header>
+      <h2>Revisions</h2>
+      <span class="note">append-only · nothing is overwritten</span>
+    </header>
+    <div class="scroll"><table>
+      <thead><tr><th>date</th><th class="r">revision</th><th class="r">value</th>
+        <th>state</th><th>reason</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+/* ---------- wiring ---------- */
+
+try {
+  const { meta, series, latest } = await loadBundle(["meta", "series", "latest"]);
+  const codes = Object.keys(latest.indices);
+  let selected = codes.find((c) => latest.indices[c].status === "published") ?? codes[0];
+
+  document.getElementById("dash-sub").textContent =
+    `${longDate(latest.index_date)} · snapshot ${latest.snapshot} · methodology ${meta.methodology_version}`;
+  document.getElementById("board-meta").textContent =
+    `${latest.run.raw_observations} raw → ${latest.run.normalized_quotes} normalised · ${Object.keys(latest.run.sources).length} venues`;
+
+  const picker = document.getElementById("picker");
+  picker.innerHTML = codes.map((c) =>
+    `<button type="button" data-code="${c}" aria-pressed="${c === selected}">${c}</button>`).join("");
+
+  function render() {
+    const board = renderBoard(latest, { onSelect: true, selected });
+    boardTable.innerHTML = board.html;
+    wireBoard(boardTable, select);
+
+    picker.querySelectorAll("button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.code === selected)));
+
+    const idx = latest.indices[selected];
+    const entries = series.indices[selected].live;
+
+    detail.innerHTML = `
+      <div class="panel">
+        <header>
+          <h2>${escapeHtml(idx.display_name)}</h2>
+          <span class="note">${series.indices[selected].published_count} published ·
+            ${series.indices[selected].withheld_count} withheld</span>
+        </header>
+        ${chart(entries)}
+        <div class="body" style="border-top:1px solid var(--rule);">
+          <p style="margin:0;font-family:var(--mono);font-size:13px;color:var(--muted);">
+            ${escapeHtml(idx.contract)}</p>
+        </div>
+      </div>
+      ${gatesPanel(idx)}
+      ${providersPanel(idx)}
+      ${exposurePanel(idx)}
+      ${quotesPanel(idx)}
+      ${revisionsPanel(series.indices[selected].revisions)}`;
+  }
+
+  function select(code) {
+    if (!codes.includes(code)) return;
+    selected = code;
+    render();
+  }
+
+  picker.addEventListener("click", (e) => {
+    const button = e.target.closest("button[data-code]");
+    if (button) select(button.dataset.code);
+  });
+
+  render();
+} catch (err) {
+  showError(boardTable, err);
+}
+</script>
+
+</body>
+</html>

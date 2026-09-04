@@ -551,5 +551,30 @@ def sensitivity_cmd(
             console.print(f"  {name:14} {share:.0%}")
 
 
+@app.command("export-web")
+def export_web_cmd(
+    out: Path = typer.Option(
+        Path("web/data"), help="Directory to write the JSON bundle into"
+    ),
+) -> None:
+    """Export the archive as JSON for the static demo site.
+
+    Reads the snapshots and the tape only -- no database, no network -- and
+    recomputes the newest fixing through the same path ``verify`` uses, so the
+    site cannot disagree with the published record.
+    """
+    from .web import write_bundle
+
+    written = write_bundle(ARCHIVE_ROOT, out)
+
+    table = Table(header_style="bold")
+    table.add_column("file")
+    table.add_column("bytes", justify="right")
+    for path in written:
+        table.add_row(str(path.relative_to(Path.cwd()) if path.is_absolute() else path),
+                      f"{path.stat().st_size:,}")
+    console.print(table)
+
+
 if __name__ == "__main__":
     app()

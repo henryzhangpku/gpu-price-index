@@ -60,10 +60,35 @@ uv run gpuidx verify                       # recompute every value from its inpu
 uv run gpuidx calibrate                    # test the adjustment factors against venue pricing
 uv run gpuidx forward --spot 3.05          # what committed-use discounts do and don't imply
 uv run gpuidx sensitivity                  # how much of each fixing rests on judgement
+uv run gpuidx export-web                   # dump the archive as JSON for the demo site
 ```
 
 `audit` is the one worth looking at. It shows every contributing provider,
 its weight and share, and every provider that was screened out and why.
+
+## Demo site
+
+A two-page static site, published to GitHub Pages by
+[a workflow](.github/workflows/pages.yml) on every push to `main` — which the
+daily fixing itself triggers, so the site follows the tape without a second
+schedule to keep in sync.
+
+* **Method** — what a settlement-grade number requires, and where this one is weak.
+* **Dashboard** — the series with its gaps intact, every provider behind every
+  fixing, the gate results, and the adjustment applied to each contributing quote.
+
+The site computes nothing. `gpuidx export-web` derives three JSON files from the
+snapshots and the tape, recomputing the newest fixing through the same path
+`verify` uses, and the pages render them. A withheld index still shows the value
+the estimator produced, struck through, next to the gate that stopped it —
+hiding it would make withholding look like missing data rather than a decision.
+
+To run it locally:
+
+```bash
+uv run gpuidx export-web        # writes web/data/*.json (gitignored)
+python -m http.server -d web 8000
+```
 
 ## The durable record
 
@@ -118,7 +143,9 @@ src/gpuidx/
   quality.py      stalled feeds, dropout, level shifts
   store.py        bitemporal append-only SQLite
   pipeline.py     the daily cycle, wired end to end
+  web.py          export the archive as JSON for the demo site
   providers/      one adapter per venue
+web/              the static demo site; reads the export, computes nothing
 ```
 
 `spec.py` holds every number a dispute would be argued over, in one file, on
