@@ -287,6 +287,23 @@ gpuidx as-of GIX-H100 2026-08-25 2026-08-26T09:00:00Z
 A store that overwrites in place cannot answer that, which means it cannot
 support a contract that settled against the original print.
 
+```mermaid
+flowchart LR
+    subgraph rows ["rows on the tape for one event time: index_date 2026-08-25"]
+        direction TB
+        R0["revision 0 — $3.00<br/>published_at 08-25 14:05<br/>superseded_at 08-26 18:00"]
+        R1["revision 1 — $3.20<br/>published_at 08-26 18:00<br/>superseded_at (blank) — live"]
+        R0 -. "corrected; the row is kept, never rewritten" .-> R1
+    end
+
+    Q1["as-of 08-25<br/>as known 08-26 09:00"] --> R0
+    Q2["as-of 08-25<br/>as known today"] --> R1
+```
+
+Both rows stay on the tape forever. The revision that settled a contract is
+still readable after it has been corrected, which is the only reason the
+correction is safe to make at all.
+
 Corrections carry a mandatory reason, recorded on the revision. A production
 administrator would additionally need a published revision policy stating the
 window inside which corrections are made at all, since a settled contract

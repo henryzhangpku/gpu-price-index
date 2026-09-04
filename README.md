@@ -45,6 +45,44 @@ that run's numbers and not today's; the series has run daily since, and the
 current fixings are on the
 [demo site](https://henryzhangpku.github.io/gpu-price-index/).
 
+## How a price becomes a fixing
+
+Every arrow that leaves the main line is a place an input is thrown away. Most
+of the work in a benchmark is deciding what does not count.
+
+```mermaid
+flowchart TB
+    SRC["~20 clouds via 5 adapters"] --> OBS["raw observation<br/>exactly as the venue stated it"]
+    OBS -.written first.-> SNAP[("snapshots/*.jsonl.gz<br/>immutable, never modified")]
+
+    OBS --> ADM{"administered price?<br/>CV about 0 across a venue's SKUs"}
+    ADM -- yes --> DROP[["discarded"]]
+    ADM -- no --> MATCH{"matches a benchmark contract?"}
+    MATCH -- no --> DROP
+    MATCH -- yes --> REG{"US region?"}
+    REG -- "disclosed non-US" --> DROP
+    REG -- "yes, or undisclosed" --> REST["restate to the benchmark good<br/>form factor x fabric x commitment x node size"]
+    REST --> CAP{"cumulative adjustment 1.75x or less?"}
+    CAP -- no --> DROP
+    CAP -- yes --> NQ["normalised quote"]
+
+    NQ --> MED["collapse to provider medians<br/>forty SKUs from one venue is one vote"]
+    MED --> MAD{"within 3 robust sigma?<br/>ratio band when MAD is zero"}
+    MAD -- no --> SCREEN[["screened, and recorded"]]
+    MAD -- yes --> WT["weight by tier 1.00 / 0.60 / 0.25<br/>cap any one provider at 35%, iteratively"]
+    WT --> VAL["weighted mean: candidate value"]
+
+    VAL --> GATE{"every enabled gate holds?<br/>4+ providers, 8+ observations, dispersion 0.45 or less"}
+    GATE -- yes --> PUB["published"]
+    GATE -- no --> WH["withheld<br/>failing gate recorded"]
+    PUB --> TAPE[("series/index_values.csv<br/>append-only tape")]
+    WH --> TAPE
+```
+
+Note where `withheld` goes. A refusal to print is written to the tape as a row
+like any other, carrying the gate that caused it. A gap in the series is a
+fact the record has to carry, not an absence of one.
+
 ## Commands
 
 ```bash
@@ -112,6 +150,34 @@ the snapshot it came from, so a day carrying two runs can still be checked.
 and fails if any no longer reproduces. It runs in CI on every fixing, which
 means the series is not merely logged — it is auditable, and an altered
 snapshot or an unversioned methodology change breaks the build.
+
+```mermaid
+flowchart LR
+    subgraph durable ["committed — the durable record"]
+        SNAP[("snapshots/<br/>raw inputs, immutable")]
+        TAPE[("series/index_values.csv<br/>what was published, and when")]
+    end
+
+    subgraph derived ["gitignored — derived state"]
+        DB[("SQLite<br/>rebuilt on demand")]
+    end
+
+    SNAP --> REBUILD["gpuidx rebuild"]
+    TAPE --> REBUILD
+    REBUILD --> DB
+    DB --> RUN["gpuidx publish<br/>needs prior runs for<br/>dropout, staleness, level shift"]
+    RUN --> SNAP
+    RUN --> TAPE
+
+    SNAP --> VER["gpuidx verify"]
+    TAPE --> VER
+    VER --> CHK{"does every published value<br/>recompute from its own inputs?"}
+    CHK -- no --> FAIL["CI fails the build"]
+```
+
+The loop is the point. The database can be deleted at any moment and rebuilt,
+because everything it holds is derived; the two committed artefacts cannot be
+derived from anything, which is why they are the ones under version control.
 
 ## Sources
 
