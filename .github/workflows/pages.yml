@@ -1,0 +1,76 @@
+name: demo site
+
+# Publishes the static demo site to GitHub Pages.
+#
+# The site is not committed. It is generated from the archive at deploy time by
+# `gpuidx export-web`, which reads the snapshots and the tape and recomputes
+# the newest fixing through the same path `verify` uses. That means the page
+# cannot drift from the published record: there is no second copy to fall out
+# of date.
+#
+# The daily fixing commits to main, and that push triggers this workflow, so
+# the site follows the tape without a second schedule to keep in sync.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "series/**"
+      - "snapshots/**"
+      - "src/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  # Never let two deploys race; always finish the one in flight.
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --frozen
+
+      - name: Export the archive as JSON
+        run: uv run gpuidx export-web --out web/data
+
+      - name: Fail if the bundle is empty
+        # A deployed site that silently shows nothing is worse than a failed
+        # deploy: it looks live and says the market has no prices.
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          latest = json.loads(pathlib.Path("web/data/latest.json").read_text())
+          if not latest.get("indices"):
+              sys.exit("latest.json carries no indices; refusing to deploy")
+          print(f"{len(latest['indices'])} indices for {latest['index_date']}")
+          PY
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

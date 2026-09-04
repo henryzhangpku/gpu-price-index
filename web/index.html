@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPU Rental Price Benchmark</title>
+<meta name="description" content="A daily GPU rental price index built from live public pricing across ~20 clouds, with the governance a settlement-grade benchmark requires: a waterfall, robust estimation, publication gates, and a bitemporal audit trail.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="disclaimer">
+  A demonstration of what a settlement-grade compute benchmark requires. Do not settle anything against these values.
+</div>
+
+<div class="topbar">
+  <a class="brand" href="index.html">gpu<span>idx</span></a>
+  <nav>
+    <a href="index.html" aria-current="page">Method</a>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="https://github.com/henryzhangpku/gpu-price-index">Source</a>
+    <button class="theme-toggle" type="button">Dark</button>
+  </nav>
+</div>
+
+<div class="wrap">
+
+  <header class="hero">
+    <span class="kicker">GPU rental price benchmark &middot; reference implementation</span>
+    <h1>Anyone can average prices. A benchmark decides when not to print.</h1>
+    <p class="standfirst">
+      A daily index over GPU rental pricing from roughly twenty clouds, built to the
+      standard a cash-settled contract would demand: reproducible years later,
+      defensible to a counterparty who lost money on it, and resistant to a
+      participant who wants the number somewhere else.
+    </p>
+  </header>
+
+  <div class="board" id="board">
+    <div class="board-head">
+      <h2>Daily fixing</h2>
+      <span class="meta" id="board-meta">loading&hellip;</span>
+    </div>
+    <div id="board-table"><div class="loading">reading the tape&hellip;</div></div>
+  </div>
+
+  <p style="font-size:14.5px;color:var(--muted);font-family:var(--ui);margin:14px 2px 0;">
+    A struck-through value is what the estimator produced and the gates refused to publish.
+    <a href="dashboard.html">Open the dashboard</a> to see every provider behind a number.
+  </p>
+
+  <div class="stat-row" id="stats" style="margin-top:34px;"></div>
+
+  <!-- 1 -->
+  <section class="band">
+    <div class="section-head"><h2>An H100-hour is not one good</h2><span class="tag">the contract</span></div>
+    <div class="prose">
+      <p>
+        A PCIe card on Ethernet in a spare-capacity marketplace and an SXM card on an
+        NVLink fabric under a datacentre SLA differ in price by a factor of three, and
+        they are not substitutes for the buyer. An index over a heterogeneous good is
+        meaningless without a standard unit.
+      </p>
+      <p>
+        So every index defines exactly one good, and every input is restated as that
+        good or discarded &mdash; the same pattern as a Platts standard cargo or a Baltic
+        route. The standard good is the benchmark; everything else is a spread to it.
+      </p>
+    </div>
+    <div class="card" style="margin-top:22px;max-width:none;">
+      <span class="label">Benchmark-equivalent contract &middot; <span id="contract-code">GIX-H100</span></span>
+      <p class="mono" style="font-size:14px;color:var(--ink);" id="contract-text">&hellip;</p>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="band">
+    <div class="section-head"><h2>Rank inputs by what they prove</h2><span class="tag">the waterfall</span></div>
+    <div class="prose">
+      <p>
+        Benchmark administration has a standard answer to inputs of unequal quality:
+        prefer transactions to quotes, and quotes to judgement. A value resting only on
+        rate cards is published with a flag, because &ldquo;what vendors say they would
+        charge&rdquo; is not the same claim as &ldquo;capacity traded here.&rdquo;
+      </p>
+    </div>
+    <div class="tiers" id="tiers" style="margin-top:22px;"></div>
+  </section>
+
+  <!-- 3 -->
+  <section class="band">
+    <div class="section-head"><h2>What would someone who wanted to move the price do?</h2><span class="tag">the estimator</span></div>
+    <div class="prose">
+      <p>
+        The estimator is built around that question rather than around statistical
+        elegance. Each defence below answers one specific attack.
+      </p>
+    </div>
+    <div class="cards" style="margin-top:22px;">
+      <div class="card">
+        <span class="label">Flood the venue with SKUs</span>
+        <p>Collapse to a per-provider median first. A venue publishing forty variants of one box gets one vote, not forty.</p>
+      </div>
+      <div class="card">
+        <span class="label">Post one absurd offer</span>
+        <p>Screen on median absolute deviation, which has a 50% breakdown point, rather than standard deviation, which does not.</p>
+      </div>
+      <div class="card">
+        <span class="label">Dominate a thin index</span>
+        <p>Cap any single provider at 35% of total weight, applied iteratively, and refuse to publish below a provider floor.</p>
+      </div>
+      <div class="card">
+        <span class="label">Wait for a quiet day</span>
+        <p>Gates are evaluated every day. A thin day withholds rather than printing a number nobody could defend.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="band">
+    <div class="section-head"><h2>$200,002</h2><span class="tag">where the robust statistic broke</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:26px;align-items:start;">
+      <div class="prose">
+        <p>
+          MAD is used precisely because you cannot defeat it with the outlier it exists
+          to catch. Fed deliberately hostile inputs, it stopped working entirely.
+        </p>
+        <p>
+          The trap is that the failure requires <em>agreement</em>. As long as honest
+          providers differ even slightly, MAD is positive and the screen works &mdash; which
+          is why a test suite built on realistic-looking prices passed happily. It only
+          breaks when the market agrees exactly, which is also the moment one extreme
+          quote does the most damage.
+        </p>
+        <p>
+          The fix falls back to a symmetric ratio band. A percentage test would have been
+          wrong twice over: it flags a provider 50% below consensus, which is ordinary
+          market structure, and it caps at 100% on the downside, so it could never catch
+          one cent against a three-dollar consensus.
+        </p>
+      </div>
+      <div>
+        <pre class="sample">four providers at $3.00, one at $1,000,000
+
+median = $3.00
+MAD    = median(0, 0, 0, 0, 999997) = 0
+
+sigma test undefined -> screen returns
+<b>published value: $200,002</b></pre>
+        <p style="font-size:14.5px;color:var(--muted);font-family:var(--ui);margin:14px 2px 0;">
+          Now covered by property-based tests that generate markets rather than choose
+          them, asserting ten invariants that must hold for any market at all.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="band">
+    <div class="section-head"><h2>Withholding is a first-class outcome</h2><span class="tag">the gates</span></div>
+    <div class="prose">
+      <p>
+        A gap in the series is a fact about the market; an interpolated value is a
+        fiction about it. Carrying yesterday's number forward on a thin day is exactly
+        the behaviour that makes a benchmark manipulable &mdash; it converts &ldquo;nobody
+        traded&rdquo; into &ldquo;the price was unchanged,&rdquo; and it rewards whoever
+        stayed quiet.
+      </p>
+    </div>
+    <div class="cards" id="gates-cards" style="margin-top:22px;"></div>
+    <p class="pull" style="margin-top:34px;">
+      An index that printed a number for a GPU only one venue quotes would be reporting
+      one vendor's rate card dressed up as a market.
+    </p>
+  </section>
+
+  <!-- 6 -->
+  <section class="band">
+    <div class="section-head"><h2>What this cannot do</h2><span class="tag">stated plainly</span></div>
+    <div class="prose">
+      <p>
+        A methodology document that only lists strengths is a marketing document. These
+        are the limits that matter most, and the full list runs to nine.
+      </p>
+    </div>
+    <div class="cards" style="margin-top:22px;">
+      <div class="card">
+        <span class="label">No transaction data</span>
+        <p>
+          Every input is an offer or a rate card. Nobody here observes a completed rental
+          at a price. That is the largest gap between this and a benchmark that could
+          responsibly settle a contract, and no estimator sophistication closes it.
+        </p>
+      </div>
+      <div class="card">
+        <span class="label">It measures the neocloud tail</span>
+        <p>
+          The economically dominant volume is private multi-year bilateral capacity that
+          never appears on a rate card and prices differently. Anything settling against
+          this carries that basis risk.
+        </p>
+      </div>
+      <div class="card">
+        <span class="label">Most adjustment factors are judgement</span>
+        <p>
+          Two can be tested against observed pairs: the community factor survives at
+          +1.2% over 41 pairs, and the spot factor turns out to be uncalibratable from
+          public data. The rest have no observable check at all.
+        </p>
+      </div>
+      <div class="card">
+        <span class="label">The dispersion gate is twitchy</span>
+        <p>
+          Two runs an hour apart on an unmoved market produced dispersion of 0.560 and
+          0.365 &mdash; withheld, then published. The gate is correct in intent and too
+          coarse at these provider counts. Recorded as an open defect rather than patched
+          with a guessed constant.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="cards">
+      <div class="card">
+        <span class="label">See the machinery</span>
+        <p>Every provider behind every number, with weights, screens, and the gate results that published or withheld it.</p>
+        <p><a href="dashboard.html">Open the dashboard &rarr;</a></p>
+      </div>
+      <div class="card">
+        <span class="label">Read the method</span>
+        <p>The full methodology, including the section on everything it gets wrong.</p>
+        <p><a href="https://github.com/henryzhangpku/gpu-price-index/blob/main/METHODOLOGY.md">METHODOLOGY.md &rarr;</a></p>
+      </div>
+      <div class="card">
+        <span class="label">Check the findings</span>
+        <p>What running it against live pricing actually turned up &mdash; including a forward curve that cannot be derived.</p>
+        <p><a href="https://github.com/henryzhangpku/gpu-price-index/blob/main/docs/FINDINGS.md">FINDINGS.md &rarr;</a></p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site">
+    <p style="margin:0 0 6px;">
+      Methodology <span class="mono" id="foot-version">--</span> &middot;
+      series <span class="mono" id="foot-range">--</span> &middot;
+      every value reproducible from its own archived inputs with <code>gpuidx verify</code>.
+    </p>
+    <p style="margin:0;">
+      A study of what it takes to turn heterogeneous compute pricing into a number
+      something could settle against. It is a demonstration, not a benchmark.
+    </p>
+  </footer>
+
+</div>
+
+<script type="module">
+import {
+  loadBundle, showError, initTheme, renderBoard,
+  fmtUsd, fmtPct, longDate, escapeHtml
+} from "./app.js";
+
+initTheme();
+
+const boardTable = document.getElementById("board-table");
+
+try {
+  const { meta, series, latest } = await loadBundle(["meta", "series", "latest"]);
+
+  /* fixing board */
+  const { html } = renderBoard(latest);
+  boardTable.innerHTML = html;
+  document.getElementById("board-meta").textContent =
+    `${longDate(latest.index_date)} · ${latest.run.raw_observations} raw observations → ${latest.run.normalized_quotes} normalised quotes`;
+
+  /* headline stats */
+  const codes = Object.keys(latest.indices);
+  const published = codes.filter((c) => latest.indices[c].status === "published").length;
+  const providers = new Set();
+  codes.forEach((c) => latest.indices[c].estimate.providers
+    .filter((p) => !p.screened_out)
+    .forEach((p) => providers.add(p.provider)));
+  const totalLive = Object.values(series.indices).reduce((n, i) => n + i.live.length, 0);
+  const totalWithheld = Object.values(series.indices).reduce((n, i) => n + i.withheld_count, 0);
+
+  document.getElementById("stats").innerHTML = [
+    { k: "indices", v: `${published}/${codes.length}`, n: "printed today" },
+    { k: "providers", v: providers.size, n: "contributing, after screening" },
+    { k: "sources", v: Object.keys(latest.run.sources).length, n: "venues collected" },
+    { k: "fixings", v: totalLive, n: `${totalWithheld} withheld` },
+    { k: "days", v: series.dates.length, n: `since ${series.dates[0] ?? "--"}` },
+  ].map((s) => `<div class="stat">
+      <div class="k">${s.k}</div>
+      <div class="v">${s.v}</div>
+      <div class="n">${escapeHtml(s.n)}</div>
+    </div>`).join("");
+
+  /* contract */
+  const first = meta.contracts[0];
+  document.getElementById("contract-code").textContent = first.index_code;
+  document.getElementById("contract-text").textContent = first.description;
+
+  /* waterfall */
+  document.getElementById("tiers").innerHTML = meta.tiers.map((t) => `
+    <div class="tier" data-tier="${t.tier}">
+      <span class="n">${t.tier}</span>
+      <div>
+        <h4>${escapeHtml(t.label)}</h4>
+        <p>${escapeHtml(t.definition)}</p>
+      </div>
+      <span class="w">${t.weight.toFixed(2)}</span>
+    </div>`).join("");
+
+  /* gates */
+  const g = meta.gates;
+  document.getElementById("gates-cards").innerHTML = [
+    { k: "Contributing providers", v: `≥ ${g.min_providers}`,
+      p: "Below this the estimate is a handful of opinions, and the outlier screen has too few points to mean anything." },
+    { k: "Contributing observations", v: `≥ ${g.min_observations}`,
+      p: "Provider breadth is not the same as evidence. A thin sample withholds even when several venues quote." },
+    { k: "Robust dispersion", v: `≤ ${g.max_dispersion}`,
+      p: "A market this dispersed is not one market, and a central estimate would misrepresent it." },
+    { k: "Single-provider weight", v: `≤ ${fmtPct(g.max_provider_weight_share)}`,
+      p: "Enforced by capping rather than by refusing, so no published value can rest on one venue's view." },
+  ].map((c) => `<div class="card">
+      <span class="label">${escapeHtml(c.k)}</span>
+      <p class="mono" style="font-size:20px;color:var(--accent);margin-bottom:10px;">${escapeHtml(c.v)}</p>
+      <p>${escapeHtml(c.p)}</p>
+    </div>`).join("");
+
+  /* footer */
+  document.getElementById("foot-version").textContent = meta.methodology_version;
+  document.getElementById("foot-range").textContent =
+    `${meta.coverage.first_date} → ${meta.coverage.last_date}`;
+
+} catch (err) {
+  showError(boardTable, err);
+}
+</script>
+
+</body>
+</html>
