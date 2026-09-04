@@ -203,15 +203,43 @@ of that single feed is a real residual exposure and is not fully mitigated.**
 
 ## 7. Publication gates
 
-A value is published only if **all** of these hold. Otherwise the index prints
-`withheld` with the failing gate recorded.
+A value is published only if every **enabled** gate below holds. Otherwise the
+index prints `withheld` with the failing gate recorded.
 
-| Gate | Threshold |
-|---|---|
-| Contributing providers | ≥ 4 |
-| Contributing observations | ≥ 8 |
-| Robust dispersion (MAD/median) | ≤ 0.45 |
-| Single-provider weight share | ≤ 35% |
+| Gate | Threshold | Enabled |
+|---|---|---|
+| Contributing providers | ≥ 4 | yes |
+| Contributing observations | ≥ 8 | yes |
+| Robust dispersion (MAD/median) | ≤ 0.45 | yes |
+| Executable input present | at least one tier 1 | no — off by default |
+
+The executable-input gate is implemented but disabled (`require_tier1` in
+`src/gpuidx/spec.py` defaults to false). With it off, a value resting entirely
+on tier 2 and 3 publishes and carries the `no_executable_input` flag from
+section 5 instead of withholding. A settlement-grade administrator would
+plausibly turn it on and accept the lost coverage. That is a configuration
+decision rather than a settled question, and this document records which way it
+is set.
+
+**The 35% single-provider weight share is not one of these gates.** It is
+enforced in section 6 step 3 by capping the over-weight provider until it
+complies, not by refusing to publish. No published value can violate it, and no
+run can record it as a failure.
+
+That difference is deliberate. The three gates above describe things the sample
+either has or lacks — enough providers, enough observations, enough agreement —
+and no arithmetic performed downstream can manufacture them; refusing to
+publish is the only honest response. Concentration is not like that. It is a
+property of the weighting, which is this system's own choice, so it can be
+fixed rather than reported. Capping makes the constraint unfalsifiable by
+construction: the value comes out bounded instead of lost. Withholding on
+concentration would throw away a sample the cap can simply repair.
+
+The cap has one configuration in which it cannot be applied. Below
+1/0.35 ≈ 3 providers there is no allocation that respects it — with two
+providers one of them necessarily carries more than half — and attempting one
+drives every weight to zero. There the cap is skipped and the provider-count
+gate does the refusing, which it would have done at that count regardless.
 
 **Withholding is a first-class outcome.** A gap in the series is a fact about
 the market; an interpolated value is a fiction about it. Carrying yesterday's

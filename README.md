@@ -25,26 +25,25 @@ That path needs no network and no credentials — it reads the archive in this
 repo. `uv run gpuidx publish` runs a live collection instead, which is what the
 daily job does.
 
-Output from a real run:
+Output from the run of 2026-08-27, as that day's fixing stands on the tape:
 
 ```
-+----------------- collection ------------------+
-| run 1 for 2026-08-27                          |
-| 577 raw observations -> 163 normalised quotes |
-+-----------------------------------------------+
                               daily fixing
 +---------------------------------------------------------------------+
 | index      |  value | prov | obs |  disp | status                    |
 |------------+--------+------+-----+-------+---------------------------|
-| GIX-H100   | $3.082 |   12 |  51 | 0.379 | published                 |
-| GIX-H200   | $3.566 |    7 |  24 | 0.398 | published                 |
-| GIX-A100   |     -- |   10 |  45 | 0.560 | withheld  dispersion      |
-| GIX-B200   | $5.823 |    6 |  39 | 0.294 | published                 |
+| GIX-H100   | $3.590 |   12 |  46 | 0.391 | published                 |
+| GIX-H200   | $3.599 |    7 |  20 | 0.175 | published                 |
+| GIX-A100   |     -- |   10 |  54 | 0.510 | withheld  dispersion      |
+| GIX-B200   | $5.938 |    6 |  29 | 0.249 | published                 |
 | GIX-MI300X |     -- |    1 |   2 |    -- | withheld  min_providers   |
 +---------------------------------------------------------------------+
 ```
 
-Two of five indices decline to print. That is the system working.
+Two of five indices decline to print. That is the system working. Those are
+that run's numbers and not today's; the series has run daily since, and the
+current fixings are on the
+[demo site](https://henryzhangpku.github.io/gpu-price-index/).
 
 ## Commands
 
@@ -97,7 +96,7 @@ The SQLite database is not one of them — it is derived state, rebuilt from the
 archive at the start of every run.
 
 ```
-snapshots/2026-08-27T140500Z.jsonl.gz   every raw observation, exactly as the
+snapshots/2026-08-27T213543Z.jsonl.gz   every raw observation, exactly as the
                                         venue stated it, never modified
 series/index_values.csv                 the publication record: one row per
                                         revision, append-only
@@ -253,7 +252,7 @@ agreements under which venues report executed volume.
 uv run pytest
 ```
 
-78 tests, in two layers. The ones that matter are in `test_estimator.py` — they encode the
+94 tests, in two layers. The ones that matter are in `test_estimator.py` — they encode the
 adversarial cases: a provider flooding the feed with forty cheap SKUs, a
 single absurd offer trying to drag the median, a venue trying to dominate a
 thin index. And `test_store.py`, which asserts the property everything else
