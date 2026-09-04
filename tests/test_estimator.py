@@ -229,3 +229,42 @@ def test_degenerate_screen_handles_a_zero_median(make_obs):
     ]
     result = estimate("GIX-H100", quotes_from(observations), GATES)
     assert result.value is not None
+
+
+def test_the_degenerate_band_is_scale_invariant_at_its_boundary(make_obs):
+    """A provider exactly at the tolerance is kept, whatever the price level.
+
+    Found by the scale-invariance property, not by hand. A market of
+    [0.9, 2.7, 2.7, 2.7] puts the low provider at a ratio of exactly 3.0, and
+    the methodology says "more than 3x", so it contributes. The same market
+    scaled by 33 computes 3.0000000000000004 in binary floating point, and
+    before the epsilon was added the screen dropped it -- moving the fixing by
+    20% with nothing about the market changed.
+
+    A benchmark whose screen depends on the price level has an absolute scale
+    baked into it, and would stop behaving as the market repriced.
+    """
+    def fixing(factor: float) -> float:
+        observations = [
+            make_obs(source=name, price_per_gpu=price * factor, sku=f"{name}-{i}")
+            for name, price in (("a", 0.9), ("b", 2.7), ("c", 2.7), ("d", 2.7))
+            for i in range(3)
+        ]
+        result = estimate("GIX-H100", quotes_from(observations), GATES)
+        assert result.value is not None
+        return result.value
+
+    base = fixing(1.0)
+    assert base == pytest.approx(2.25), "the 3.0x provider must contribute"
+    assert fixing(33.0) == pytest.approx(base * 33.0, rel=1e-6)
+
+
+def test_a_provider_past_the_degenerate_band_is_still_screened(make_obs):
+    """The epsilon must not blunt the screen it protects."""
+    observations = [
+        make_obs(source=name, price_per_gpu=price, sku=f"{name}-{i}")
+        for name, price in (("a", 0.89), ("b", 2.7), ("c", 2.7), ("d", 2.7))
+        for i in range(3)
+    ]
+    result = estimate("GIX-H100", quotes_from(observations), GATES)
+    assert [p.provider for p in result.providers if p.screened_out] == ["a"]

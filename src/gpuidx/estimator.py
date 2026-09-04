@@ -49,6 +49,19 @@ OUTLIER_SIGMAS = 3.0
 #: the market is.
 DEGENERATE_RATIO_TOLERANCE = 3.0
 
+#: Relative slack on the ratio comparison, so that a provider sitting exactly
+#: on the tolerance is treated the same way regardless of how its price is
+#: represented in binary floating point.
+#:
+#: Without it the screen is not scale-invariant at the boundary. A market of
+#: [0.9, 2.7, 2.7, 2.7] puts the low provider at a ratio of exactly 3.0 and
+#: keeps it; the same market scaled by 33 computes 3.0000000000000004 and
+#: screens it, moving the fixing from 2.25 to 2.70 in scaled terms -- a 20%
+#: move with nothing about the market changed. The methodology says "more than
+#: 3x", so a provider exactly at the tolerance is kept, and that decision must
+#: not depend on the arithmetic.
+RATIO_EPSILON = 1e-9
+
 
 @dataclass
 class ProviderAggregate:
@@ -158,7 +171,7 @@ def screen_outliers(aggregates: list[ProviderAggregate]) -> list[QualityFlag]:
             if agg.price <= 0:
                 continue
             ratio = max(agg.price / median, median / agg.price)
-            if ratio > DEGENERATE_RATIO_TOLERANCE:
+            if ratio > DEGENERATE_RATIO_TOLERANCE * (1 + RATIO_EPSILON):
                 agg.screened_out = True
                 agg.screen_reason = f"{ratio:.1f}x from an exact consensus"
                 flags.append(
