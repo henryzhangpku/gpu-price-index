@@ -73,13 +73,17 @@ const detail = document.getElementById("detail");
  * exactly the behaviour the gates exist to prevent.
  */
 function chart(entries) {
-  const W = 900, H = 260;
-  const pad = { t: 18, r: 18, b: 30, l: 56 };
+  const W = 900, H = 300;
+  // Extra bottom room: withheld days live in a status strip under the axis
+  // rather than as full-height lines through the plot. Drawn inside the plot
+  // they read as a data series, and the marker sits where a price would be.
+  const pad = { t: 18, r: 18, b: 74, l: 56 };
   const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const stripY = H - 46, stripH = 9;
 
   const values = entries.filter((e) => e.value !== null).map((e) => e.value);
   if (!values.length) {
-    return `<div class="empty">No published value in this series yet &mdash; every day was withheld.</div>`;
+    return `<div class="empty">No published value in this series yet — every day was withheld.</div>`;
   }
 
   let lo = Math.min(...values), hi = Math.max(...values);
@@ -91,7 +95,6 @@ function chart(entries) {
   const x = (i) => pad.l + (n === 1 ? iw / 2 : (i * iw) / (n - 1));
   const y = (v) => pad.t + ih - ((v - lo) / (hi - lo)) * ih;
 
-  // horizontal grid + y labels
   const ticks = 4;
   let grid = "";
   for (let i = 0; i <= ticks; i++) {
@@ -101,7 +104,8 @@ function chart(entries) {
     grid += `<text class="axis" x="${pad.l - 9}" y="${yy + 3.5}" text-anchor="end">${v.toFixed(2)}</text>`;
   }
 
-  // segments of consecutive published days
+  // Consecutive published days form a segment. A gap ends the segment rather
+  // than being bridged: a bridged line draws a price that was never published.
   const segments = [];
   let current = [];
   entries.forEach((e, i) => {
@@ -114,40 +118,56 @@ function chart(entries) {
   });
   if (current.length) segments.push(current);
 
+  // A lone published day between two withheld ones is a segment of one, and
+  // would otherwise render as an unexplained speck. Ring it so it reads as a
+  // deliberate mark.
   const lines = segments.map((seg) =>
     seg.length === 1
-      ? `<circle class="dot" cx="${seg[0][0]}" cy="${seg[0][1]}" r="3.5"></circle>`
+      ? `<circle class="lone" cx="${seg[0][0]}" cy="${seg[0][1]}" r="7"></circle>`
       : `<path class="line" d="M ${seg.map((p) => p.join(" ")).join(" L ")}"></path>`
   ).join("");
 
-  const marks = entries.map((e, i) => {
-    const xx = x(i);
-    if (e.value === null) {
-      return `<line class="gap" x1="${xx}" y1="${pad.t}" x2="${xx}" y2="${pad.t + ih}"></line>
-              <circle class="gapdot" cx="${xx}" cy="${pad.t + ih}" r="4"></circle>
-              <title>${e.index_date}: withheld — ${escapeHtml(e.withheld_reason || "gated")}</title>`;
-    }
-    return `<circle class="dot" cx="${xx}" cy="${y(e.value)}" r="3.5">
-              <title>${e.index_date}: ${fmtUsd(e.value)}</title>
-            </circle>`;
+  const dots = entries.map((e, i) =>
+    e.value === null ? "" :
+    `<circle class="dot" cx="${x(i)}" cy="${y(e.value)}" r="3.5">
+       <title>${e.index_date}: ${fmtUsd(e.value)}</title>
+     </circle>`
+  ).join("");
+
+  // The status strip: one cell per day, so the run of withheld days is legible
+  // as a pattern without competing with the prices.
+  const cellW = Math.max(6, Math.min(22, (n > 1 ? iw / (n - 1) : iw) * 0.55));
+  const strip = entries.map((e, i) => {
+    const cx = x(i) - cellW / 2;
+    const published = e.value !== null;
+    const tip = published
+      ? `${e.index_date}: published at ${fmtUsd(e.value)}`
+      : `${e.index_date}: withheld — ${e.withheld_reason || "gated"}`;
+    return `<rect class="cell ${published ? "on" : "off"}" x="${cx}" y="${stripY}"
+                  width="${cellW}" height="${stripH}" rx="2"><title>${escapeHtml(tip)}</title></rect>`;
   }).join("");
 
   const step = Math.max(1, Math.ceil(n / 8));
   const xlabels = entries.map((e, i) =>
     i % step === 0 || i === n - 1
-      ? `<text class="axis" x="${x(i)}" y="${H - 9}" text-anchor="middle">${shortDate(e.index_date)}</text>`
+      ? `<text class="axis" x="${x(i)}" y="${H - 12}" text-anchor="middle">${shortDate(e.index_date)}</text>`
       : ""
   ).join("");
 
+  const withheldCount = entries.filter((e) => e.value === null).length;
+
   return `<div class="chart-wrap">
       <svg class="chart" viewBox="0 0 ${W} ${H}" role="img"
-           aria-label="Published fixings over time, with gaps where the index was withheld">
-        ${grid}${lines}${marks}${xlabels}
+           aria-label="Published fixings over time. ${withheldCount} of ${n} days were withheld and print no value.">
+        ${grid}${lines}${dots}
+        <text class="axis" x="${pad.l - 9}" y="${stripY + stripH - 1}" text-anchor="end">status</text>
+        ${strip}${xlabels}
       </svg>
     </div>
     <div class="legend">
       <span><i></i> published fixing</span>
-      <span><i class="gap"></i> withheld &mdash; no value printed</span>
+      <span><i class="ring"></i> published, with a withheld day either side</span>
+      <span><i class="off"></i> withheld — no value printed</span>
     </div>`;
 }
 
