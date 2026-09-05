@@ -290,7 +290,14 @@ def revisions(
 
 @app.command()
 def contracts() -> None:
-    """Print the benchmark contract definitions and active gates."""
+    """Print the benchmark contracts, the gates, and the constraints.
+
+    Gates and constraints are listed separately on purpose. A gate can fail and
+    withhold the value. The other two never can -- the weight share is enforced
+    by capping, and the level-shift threshold flags for sign-off rather than
+    blocking. Printing all five under one heading claims a stronger guarantee
+    than the code provides. METHODOLOGY section 7 draws the same line.
+    """
     for contract in CONTRACTS.values():
         console.print(Panel(contract.describe(), title=f"{contract.index_code} - {contract.display_name}"))
     gates = DEFAULT_GATES
@@ -298,10 +305,21 @@ def contracts() -> None:
         Panel(
             f"min providers          {gates.min_providers}\n"
             f"min observations       {gates.min_observations}\n"
-            f"max dispersion         {gates.max_dispersion}\n"
-            f"max provider weight    {gates.max_provider_weight_share:.0%}\n"
-            f"review move threshold  {gates.review_move_threshold:.0%}",
-            title="publication gates",
+            f"max dispersion         {gates.max_dispersion}",
+            title="publication gates - failing any of these withholds",
+            expand=False,
+        )
+    )
+    console.print(
+        Panel(
+            f"max provider weight    {gates.max_provider_weight_share:.0%}"
+            "   capped iteratively, so it cannot fail\n"
+            f"review move threshold  {gates.review_move_threshold:.0%}"
+            "   flags for sign-off, does not block\n"
+            f"executable input       "
+            f"{'required' if gates.require_tier1 else 'not required'}"
+            "   gate exists, off by default",
+            title="constraints and flags - these never withhold",
             expand=False,
         )
     )
