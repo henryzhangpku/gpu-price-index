@@ -37,6 +37,32 @@ prices are evidence about the market or evidence about GCP and Azure. This
 implementation screens them, which is a defensible choice and not an obviously
 correct one.
 
+**Update, 2026-09-05: AWS has since crossed the screen, and it sits exactly on
+the threshold.** The table above is correct for 2026-08-27 and stayed correct
+through 2026-09-02. On 2026-09-03 AWS was screened at **3.0 robust sigma** —
+the threshold is 3.0 — and it has been screened since. The rate card did not
+move; it is $6.88 on every one of those runs. What moved was the neocloud
+median around it.
+
+That is worse than it first looks. The index does not merely include or exclude
+a hyperscaler on the merits: it flips between being a neocloud-only benchmark
+and a neocloud-plus-AWS benchmark, day to day, on the third significant figure
+of a robust sigma. Two consumers comparing the series across that boundary are
+comparing two different goods, and nothing in the published value says so.
+
+There are three honest responses and this implementation has taken none of them
+yet. Declare the index neocloud-only and screen the hyperscaler tier by rule
+rather than by outlier distance, which is what the tier arguably deserves — a
+hyperscaler list price is a different kind of evidence, not a distant sample of
+the same kind. Or publish a separate hyperscaler benchmark, which is the option
+section 10.2 of the methodology already concedes a different administrator
+could justify. Or keep the current behaviour and flag the runs where the
+composition changes, so at least the flip is visible.
+
+The general lesson is the one the estimator keeps teaching: a threshold test
+applied to a quantity that drifts will eventually sit on its own boundary, and
+when it does, the decision it makes is noise wearing the costume of a rule.
+
 ## 2. The A100 market has fragmented — and the gate that detects it flickers
 
 `GIX-A100` draws from ten providers spanning a 3.4x range:
