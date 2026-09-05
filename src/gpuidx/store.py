@@ -131,8 +131,26 @@ CREATE INDEX IF NOT EXISTS idx_flags_run ON quality_flags(run_id);
 """
 
 
+def _iso_z(value: datetime | str) -> str:
+    """One canonical spelling for an instant: microseconds, UTC, trailing Z.
+
+    Timestamps in this column are compared as strings, so a second spelling is
+    a correctness bug rather than a cosmetic one. Two were in use: a live
+    publish wrote `datetime.isoformat()`, which ends `+00:00`, while `rebuild`
+    inserted the tape's own rendering, which ends `Z`. Since 'Z' sorts after
+    '+', an as-of query at exactly a publication instant compared the two
+    spellings and concluded the value did not exist yet.
+    """
+    if isinstance(value, str):
+        text = value.strip().replace("Z", "+00:00")
+        value = datetime.fromisoformat(text)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
 def _utc() -> str:
-    return datetime.now(UTC).isoformat()
+    return _iso_z(datetime.now(UTC))
 
 
 class Store:
@@ -356,7 +374,7 @@ class Store:
         return self.conn.execute(
             "SELECT * FROM index_values WHERE index_code = ? AND index_date = ?"
             " AND published_at <= ? ORDER BY revision DESC LIMIT 1",
-            (index_code, index_date.isoformat(), knowledge_time.isoformat()),
+            (index_code, index_date.isoformat(), _iso_z(knowledge_time)),
         ).fetchone()
 
     def history(self, index_code: str, limit: int = 30) -> list[sqlite3.Row]:

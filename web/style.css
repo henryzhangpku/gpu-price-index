@@ -407,3 +407,24 @@ tr.screened .code { text-decoration: line-through; color: var(--muted); }
   th, td { padding-left: 14px; padding-right: 14px; }
   .picker { margin-left: 0; width: 100%; }
 }
+
+/* ---------- as-of ---------- */
+
+.asof-help { margin: 0 0 16px; font-size: 15px; color: var(--ink-2); max-width: 68ch; }
+.asof-row { display: flex; align-items: center; gap: 14px; }
+.asof-row input[type="range"] {
+  flex: 1; accent-color: var(--accent); height: 22px; cursor: pointer; min-width: 0;
+}
+.asof-row button {
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--rule-2); border-radius: 6px;
+  padding: 6px 13px; cursor: pointer; white-space: nowrap;
+}
+.asof-row button:hover { border-color: var(--accent-line); color: var(--ink); }
+.asof-state { margin-top: 10px; font-family: var(--ui); font-size: 13.5px; color: var(--muted); }
+.asof-banner {
+  margin: 0; padding: 14px 22px; font-family: var(--ui); font-size: 14px;
+  color: var(--withheld); background: var(--withheld-soft);
+  border-bottom: 1px solid var(--withheld-line); line-height: 1.55;
+}
+.asof-banner .mono { font-family: var(--mono); font-size: 12.5px; }
