@@ -27,8 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import METHODOLOGY_VERSION
-from .archive import list_snapshots, live_tape_values, read_snapshot, read_tape
-from .estimator import estimate
+from .archive import SNAPSHOT_DIR, list_snapshots, live_tape_values, read_snapshot, read_tape
+from .estimator import Estimate, estimate
 from .normalize import prepare_quotes
 from .spec import CONTRACTS, DEFAULT_GATES, Gates
 from .store import Store
@@ -229,6 +229,65 @@ def verify(root: Path, gates: Gates | None = None) -> VerifyReport:
             )
 
     return report
+
+
+def estimate_from_archive(
+    root: Path,
+    index_code: str,
+    index_date: str,
+    revision: int | None = None,
+    gates: Gates | None = None,
+) -> tuple[Estimate | None, str]:
+    """Recompute one fixing's provider breakdown from its own archived inputs.
+
+    ``audit`` needs this because the contributions table is written by a live
+    publish and a rebuilt store has none. Without it a fresh clone can restore
+    every published value from the tape and still not explain a single one --
+    which is the state every reader of this repository is in.
+
+    Deriving the breakdown from the named snapshot is also the stronger answer.
+    Reading the table tells you what was computed once; recomputing tells you
+    what the archived inputs still support, and that is what an audit is for.
+
+    Returns the estimate and the snapshot it came from, or None and the reason
+    it could not be derived.
+    """
+    gates = gates or DEFAULT_GATES
+
+    candidates = [
+        row
+        for row in read_tape(root)
+        if row["index_code"] == index_code and row["index_date"] == index_date
+    ]
+    if not candidates:
+        return None, f"no tape row for {index_code} on {index_date}"
+
+    if revision is None:
+        row = max(candidates, key=lambda r: int(r["revision"]))
+    else:
+        matching = [r for r in candidates if int(r["revision"]) == revision]
+        if not matching:
+            return None, f"no revision {revision} for {index_code} on {index_date}"
+        row = matching[0]
+
+    if row["methodology_version"] != METHODOLOGY_VERSION:
+        return None, (
+            f"published under methodology {row['methodology_version']}, "
+            f"current is {METHODOLOGY_VERSION} -- recomputing would explain it "
+            "under rules it was not produced by"
+        )
+
+    name = (row.get("snapshot") or "").strip()
+    if not name:
+        return None, "tape row predates snapshot provenance and names no inputs"
+
+    path = root / SNAPSHOT_DIR / name
+    if not path.exists():
+        return None, f"named snapshot {name} is missing from the archive"
+
+    quotes, _ = prepare_quotes(read_snapshot(path).observations)
+    relevant = [q for q in quotes if q.index_code == index_code]
+    return estimate(index_code, relevant, gates), name
 
 
 def _as_float(value: str | None) -> float | None:

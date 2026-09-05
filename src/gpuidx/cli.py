@@ -29,7 +29,7 @@ from .forward import (
     premium_sensitivity,
 )
 from .pipeline import run_daily
-from .reproduce import coverage, rebuild, verify
+from .reproduce import coverage, estimate_from_archive, rebuild, verify
 from .sensitivity import exposure_all
 from .spec import CONTRACTS, DEFAULT_GATES
 from .store import Store
@@ -178,6 +178,36 @@ def audit(
     table.add_column("note")
 
     contributions = store.contributions(index_code, target, rev)
+    provenance = "contributions recorded at publication"
+
+    if not contributions:
+        # A rebuilt store has no contributions: they are written by a live
+        # publish, and `rebuild` restores the tape rather than replaying one.
+        # That is the state every fresh clone is in, so fall back to deriving
+        # the breakdown from the inputs the tape names. It is also the better
+        # answer -- the table says what was computed once, the snapshot says
+        # what the archived inputs still support.
+        recomputed, detail = estimate_from_archive(ARCHIVE_ROOT, index_code, index_date, rev)
+        if recomputed is None:
+            console.print(f"[yellow]no contribution detail available: {detail}[/]")
+            store.close()
+            raise typer.Exit(1)
+        total_weight = sum(p.weight for p in recomputed.contributing) or 1.0
+        for agg in sorted(recomputed.providers, key=lambda a: (a.screened_out, -a.weight)):
+            table.add_row(
+                f"[strike]{agg.provider}[/]" if agg.screened_out else agg.provider,
+                _fmt(agg.price),
+                f"{agg.weight:.2f}",
+                "--" if agg.screened_out else f"{agg.weight / total_weight:.1%}",
+                str(agg.quote_count),
+                str(int(agg.best_tier)),
+                agg.screen_reason or ("screened" if agg.screened_out else ""),
+            )
+        console.print(table)
+        console.print(f"[dim]recomputed from {detail}[/]")
+        store.close()
+        return
+
     total_weight = sum(c["weight"] for c in contributions if not c["screened_out"]) or 1.0
     for contribution in contributions:
         screened = bool(contribution["screened_out"])
@@ -191,6 +221,7 @@ def audit(
             contribution["screen_reason"] or ("screened" if screened else ""),
         )
     console.print(table)
+    console.print(f"[dim]{provenance}[/]")
     store.close()
 
 
