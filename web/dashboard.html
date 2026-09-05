@@ -138,7 +138,9 @@ function chart(entries) {
   // as a pattern without competing with the prices.
   const cellW = Math.max(6, Math.min(22, (n > 1 ? iw / (n - 1) : iw) * 0.55));
   const strip = entries.map((e, i) => {
-    const cx = x(i) - cellW / 2;
+    // Clamp inside the plot so the first cell clears the "status" label and
+    // the last one clears the right edge.
+    const cx = Math.min(Math.max(x(i) - cellW / 2, pad.l), W - pad.r - cellW);
     const published = e.value !== null;
     const tip = published
       ? `${e.index_date}: published at ${fmtUsd(e.value)}`
