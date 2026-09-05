@@ -8,8 +8,16 @@ name: demo site
 # cannot drift from the published record: there is no second copy to fall out
 # of date.
 #
-# The daily fixing commits to main, and that push triggers this workflow, so
-# the site follows the tape without a second schedule to keep in sync.
+# Triggering is deliberately belt-and-braces, because the obvious wiring does
+# not work. The daily fixing pushes its commit with the default GITHUB_TOKEN,
+# and GitHub does not let a push made with that token start another workflow --
+# a loop guard. So a `push` trigger alone leaves the site silently a day stale
+# after every fixing, which is the worst failure mode available to a page whose
+# whole claim is that it follows the tape.
+#
+# `workflow_run` closes that hole: it fires when the fixing workflow finishes,
+# regardless of who pushed. The `push` trigger still covers human commits to
+# web/ or src/.
 
 on:
   push:
@@ -20,6 +28,9 @@ on:
       - "snapshots/**"
       - "src/**"
       - ".github/workflows/pages.yml"
+  workflow_run:
+    workflows: ["daily fixing"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -35,8 +46,18 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A failed fixing publishes nothing, so there is nothing new to deploy.
+    # The condition has to admit push and dispatch, where workflow_run is null.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v7
+        with:
+          # workflow_run checks out the default branch by SHA of the *trigger*
+          # unless told otherwise; be explicit so the export always reads the
+          # tape as it stands on main right now.
+          ref: main
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1

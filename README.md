@@ -114,9 +114,14 @@ its weight and share, and every provider that was screened out and why.
 ## Demo site
 
 A two-page static site, published to GitHub Pages by
-[a workflow](.github/workflows/pages.yml) on every push to `main` — which the
-daily fixing itself triggers, so the site follows the tape without a second
-schedule to keep in sync.
+[a workflow](.github/workflows/pages.yml) that runs when the daily fixing
+finishes, and on any push touching `web/` or `src/`.
+
+It has to watch the fixing *workflow* rather than its push: the fixing commits
+with the default `GITHUB_TOKEN`, and GitHub does not let a push made with that
+token start another workflow. Wiring the deploy to the push alone left the site
+a day stale after every fixing — silently, which is the worst way for a page
+that claims to follow the tape to be wrong.
 
 * **Method** — what a settlement-grade number requires, and where this one is weak.
 * **Dashboard** — the series with its gaps intact, every provider behind every
