@@ -44,6 +44,27 @@
     <div id="board-table"><div class="loading">reading the tape&hellip;</div></div>
   </div>
 
+  <div class="panel" id="asof-panel" hidden>
+    <header>
+      <h2>As of</h2>
+      <span class="note" id="asof-note"></span>
+    </header>
+    <div class="body">
+      <p class="asof-help">
+        The store is bitemporal: every value carries when it was true in the market
+        and when this system first knew it. Move the control to read the tape as it
+        stood at an earlier moment. Nothing is overwritten, so the earlier answer is
+        still there.
+      </p>
+      <div class="asof-row">
+        <input type="range" id="asof" min="0" max="0" value="0" step="1"
+               aria-label="Knowledge time">
+        <button type="button" id="asof-now">now</button>
+      </div>
+      <div class="asof-state" id="asof-label"></div>
+    </div>
+  </div>
+
   <div id="detail"></div>
 
   <footer class="site">
@@ -339,6 +360,24 @@ function revisionsPanel(entries) {
   </div>`;
 }
 
+/* ---------- bitemporal resolution ----------
+ * Mirrors Store.as_of exactly: for one event date, the value known at time T is
+ * the highest revision whose published_at is at or before T. A date with no such
+ * revision was not known yet, and is absent rather than blank -- the tape had
+ * nothing to say about it.
+ *
+ * ISO-8601 UTC strings compare lexically, so no date parsing is needed.
+ */
+function asOfSeries(revisions, knowledgeTime) {
+  const byDate = new Map();
+  for (const r of revisions) {
+    if (knowledgeTime !== null && r.published_at > knowledgeTime) continue;
+    const held = byDate.get(r.index_date);
+    if (!held || r.revision > held.revision) byDate.set(r.index_date, r);
+  }
+  return [...byDate.values()].sort((a, b) => (a.index_date < b.index_date ? -1 : 1));
+}
+
 /* ---------- wiring ---------- */
 
 try {
@@ -355,6 +394,32 @@ try {
   picker.innerHTML = codes.map((c) =>
     `<button type="button" data-code="${c}" aria-pressed="${c === selected}">${c}</button>`).join("");
 
+  // null means "now" -- the live view. Otherwise an ISO stamp from the tape.
+  let knowledgeTime = null;
+  const asofPanel = document.getElementById("asof-panel");
+  const asofInput = document.getElementById("asof");
+  const asofLabel = document.getElementById("asof-label");
+  const asofNote = document.getElementById("asof-note");
+
+  function stampsFor(code) {
+    // Only moments the tape actually recorded. A continuous time picker would
+    // invite questions the record cannot answer.
+    return [...new Set(series.indices[code].revisions.map((r) => r.published_at))].sort();
+  }
+
+  function syncAsofControl() {
+    const stamps = stampsFor(selected);
+    const revised = series.indices[selected].revisions.length
+                  > series.indices[selected].live.length;
+    asofPanel.hidden = stamps.length < 2;
+    asofInput.max = String(stamps.length);        // last position = now
+    asofInput.value = String(stamps.length);
+    asofNote.textContent = revised
+      ? `${series.indices[selected].revisions.length} revisions across ${series.indices[selected].live.length} dates`
+      : "no corrections on this index yet";
+    knowledgeTime = null;
+  }
+
   function render() {
     const board = renderBoard(latest, { onSelect: true, selected });
     boardTable.innerHTML = board.html;
@@ -364,7 +429,34 @@ try {
       b.setAttribute("aria-pressed", String(b.dataset.code === selected)));
 
     const idx = latest.indices[selected];
-    const entries = series.indices[selected].live;
+    const liveEntries = series.indices[selected].live;
+    const entries = knowledgeTime === null
+      ? liveEntries
+      : asOfSeries(series.indices[selected].revisions, knowledgeTime);
+
+    // What the reader is actually here to see: how the answer differed then.
+    let asofBanner = "";
+    if (knowledgeTime !== null) {
+      const liveBy = new Map(liveEntries.map((e) => [e.index_date, e]));
+      const changed = entries.filter((e) => {
+        const now = liveBy.get(e.index_date);
+        return !now || now.value !== e.value || now.revision !== e.revision;
+      });
+      const unknown = liveEntries.length - entries.length;
+      asofBanner = `<div class="asof-banner">
+        <strong>Reading the tape as known at ${escapeHtml(knowledgeTime.replace("T", " ").slice(0, 19))}Z.</strong>
+        ${changed.length
+          ? `${changed.length} value${changed.length === 1 ? "" : "s"} differ${changed.length === 1 ? "s" : ""} from today:
+             ${changed.slice(0, 4).map((e) => {
+               const now = liveBy.get(e.index_date);
+               return `<span class="mono">${e.index_date} ${e.value === null ? "withheld" : fmtUsd(e.value)}
+                       (rev ${e.revision}) &rarr; ${now && now.value !== null ? fmtUsd(now.value) : "withheld"}
+                       (rev ${now ? now.revision : "—"})</span>`;
+             }).join("; ")}`
+          : "No value differs from today."}
+        ${unknown > 0 ? `<br>${unknown} later date${unknown === 1 ? " was" : "s were"} not yet published.` : ""}
+      </div>`;
+    }
 
     detail.innerHTML = `
       <div class="panel">
@@ -373,6 +465,7 @@ try {
           <span class="note">${series.indices[selected].published_count} published ·
             ${series.indices[selected].withheld_count} withheld</span>
         </header>
+        ${asofBanner}
         ${chart(entries)}
         <div class="body" style="border-top:1px solid var(--rule);">
           <p style="margin:0;font-family:var(--mono);font-size:13px;color:var(--muted);">
@@ -389,14 +482,34 @@ try {
   function select(code) {
     if (!codes.includes(code)) return;
     selected = code;
+    syncAsofControl();
     render();
   }
+
+  asofInput.addEventListener("input", () => {
+    const stamps = stampsFor(selected);
+    const pos = Number(asofInput.value);
+    knowledgeTime = pos >= stamps.length ? null : stamps[pos];
+    asofLabel.innerHTML = knowledgeTime === null
+      ? `<span class="mono">now</span> — the live tape`
+      : `<span class="mono">${escapeHtml(knowledgeTime.replace("T", " ").slice(0, 19))}Z</span>
+         — revision ${pos} of ${stamps.length - 1} recorded moments`;
+    render();
+  });
+
+  document.getElementById("asof-now").addEventListener("click", () => {
+    syncAsofControl();
+    asofLabel.innerHTML = `<span class="mono">now</span> — the live tape`;
+    render();
+  });
 
   picker.addEventListener("click", (e) => {
     const button = e.target.closest("button[data-code]");
     if (button) select(button.dataset.code);
   });
 
+  syncAsofControl();
+  asofLabel.innerHTML = `<span class="mono">now</span> — the live tape`;
   render();
 } catch (err) {
   showError(boardTable, err);

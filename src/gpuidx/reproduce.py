@@ -31,7 +31,7 @@ from .archive import SNAPSHOT_DIR, list_snapshots, live_tape_values, read_snapsh
 from .estimator import Estimate, estimate
 from .normalize import prepare_quotes
 from .spec import CONTRACTS, DEFAULT_GATES, Gates
-from .store import Store
+from .store import Store, _iso_z
 
 #: Values are compared to the cent. Tighter than this and floating-point
 #: association order across a rebuild would produce spurious failures.
@@ -124,8 +124,8 @@ def _restore_tape(store: Store, root: Path) -> None:
                     float(row["dispersion"]) if row["dispersion"] else None,
                     row["withheld_reason"] or None,
                     row["methodology_version"],
-                    row["published_at"],
-                    row["superseded_at"] or None,
+                    _iso_z(row["published_at"]),
+                    _iso_z(row["superseded_at"]) if row["superseded_at"] else None,
                     row["revision_reason"] or None,
                 ),
             )

@@ -118,3 +118,51 @@ def test_contributions_retain_screened_providers(store, make_obs):
     # The audit trail must show what was excluded, not just what survived.
     assert [r["provider"] for r in screened] == ["odd"]
     assert screened[0]["screen_reason"]
+
+
+def test_as_of_at_the_exact_publication_instant_finds_the_value():
+    """The boundary case, which is the one a dispute would actually ask about.
+
+    Timestamps in this column are compared as strings. Two spellings were in
+    use -- a live publish wrote `+00:00`, `rebuild` inserted the tape's `Z` --
+    and since 'Z' sorts after '+', an as-of query at exactly a publication
+    instant compared the two spellings and reported the value did not exist yet.
+    """
+    from datetime import UTC, date, datetime
+
+    from gpuidx.store import _iso_z
+
+    store = Store(":memory:")
+    published = datetime(2026, 8, 27, 20, 53, 50, 445409, tzinfo=UTC)
+
+    with store.tx() as conn:
+        conn.execute(
+            "INSERT INTO index_values (index_code, index_date, revision, status, value,"
+            " provider_count, observation_count, dispersion, withheld_reason,"
+            " methodology_version, published_at, superseded_at, revision_reason, run_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL)",
+            ("GIX-H100", "2026-08-27", 0, "published", 3.089, 6, 20, 0.1, None,
+             "1.0.0", _iso_z(published)),
+        )
+
+    at_instant = store.as_of("GIX-H100", date(2026, 8, 27), published)
+    assert at_instant is not None, "a value must exist at its own publication instant"
+    assert at_instant["revision"] == 0
+
+    from datetime import timedelta
+
+    assert store.as_of("GIX-H100", date(2026, 8, 27), published - timedelta(microseconds=1)) is None
+    assert store.as_of("GIX-H100", date(2026, 8, 27), published + timedelta(microseconds=1)) is not None
+    store.close()
+
+
+def test_timestamps_have_one_spelling():
+    from datetime import UTC, datetime
+
+    from gpuidx.store import _iso_z
+
+    instant = datetime(2026, 8, 27, 20, 53, 50, 445409, tzinfo=UTC)
+    canonical = "2026-08-27T20:53:50.445409Z"
+    assert _iso_z(instant) == canonical
+    assert _iso_z(canonical) == canonical
+    assert _iso_z("2026-08-27T20:53:50.445409+00:00") == canonical
