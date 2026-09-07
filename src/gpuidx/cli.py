@@ -15,6 +15,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -30,7 +31,7 @@ from .forward import (
 )
 from .pipeline import run_daily
 from .reproduce import coverage, estimate_from_archive, rebuild, verify
-from .sensitivity import exposure_all
+from .sensitivity import exposure, exposure_all
 from .spec import CONTRACTS, DEFAULT_GATES
 from .store import Store
 
@@ -598,6 +599,208 @@ def sensitivity_cmd(
         console.print("\n[bold]share of inputs touched by each factor, highest across indices[/]")
         for name, share in sorted(factors.items(), key=lambda kv: -kv[1]):
             console.print(f"  {name:14} {share:.0%}")
+
+
+@app.command("explain")
+def explain_cmd(
+    index_code: str = typer.Argument(...),
+    index_date: str = typer.Argument(...),
+) -> None:
+    """Show how one value was derived, from the raw file to the fixing.
+
+    ``audit`` shows the providers behind a number. This shows everything
+    around them: what was collected, what was discarded and why, what survived
+    the screen, and which gates the remaining sample had to clear. It is the
+    answer to "walk me through how this value was produced".
+    """
+    from collections import Counter
+
+    from .archive import SNAPSHOT_DIR, read_snapshot, read_tape
+    from .calibrate import drop_administered
+    from .estimator import estimate as run_estimate
+    from .normalize import normalize_all
+
+    rows = [
+        r
+        for r in read_tape(ARCHIVE_ROOT)
+        if r["index_code"] == index_code and r["index_date"] == index_date
+    ]
+    if not rows:
+        console.print(f"[yellow]no tape row for {index_code} on {index_date}[/]")
+        raise typer.Exit(1)
+    row = max(rows, key=lambda r: int(r["revision"]))
+
+    snapshot = (row.get("snapshot") or "").strip()
+    path = ARCHIVE_ROOT / SNAPSHOT_DIR / snapshot
+    if not snapshot or not path.exists():
+        console.print(f"[yellow]inputs unavailable: {snapshot or 'no snapshot named'}[/]")
+        raise typer.Exit(1)
+
+    observations = read_snapshot(path).observations
+    informative, admin_flags = drop_administered(observations)
+    quotes, reject_flags = normalize_all(informative)
+    mine = [q for q in quotes if q.index_code == index_code]
+    est = run_estimate(index_code, mine, DEFAULT_GATES)
+
+    published = row["status"] == "published"
+    headline = _fmt(float(row["value"])) if row["value"] else "withheld"
+    exposure_row = exposure(index_code, mine, DEFAULT_GATES)
+
+    def stage(number: int, title: str, rationale: str) -> None:
+        """A numbered stage with the decision it embodies, not just its output."""
+        console.print()
+        console.rule(f"[bold cyan]{number}[/]  [bold]{title}[/]", align="left", style="cyan")
+        console.print(f"[italic dim]{rationale}[/]")
+
+    console.print(
+        Panel(
+            f"[bold]{headline}[/]     revision {row['revision']}"
+            f"     methodology {row['methodology_version']}"
+            f"\n[dim]derived from {snapshot}[/]",
+            title=f"[bold]{index_code}[/]  ·  {index_date}",
+            border_style="cyan" if published else "yellow",
+            expand=False,
+        )
+    )
+
+    # -- 1. collection ------------------------------------------------------
+    rejected: Counter[str] = Counter()
+    for flag in reject_flags:
+        rejected[flag.code.replace("rejected_", "")] = int(flag.detail.split()[0])
+
+    reasons = {
+        "unmatched_model": "no benchmark contract for that GPU string; matching is exact, never fuzzy",
+        "region_mismatch": "region disclosed and outside the US; region is screened, never adjusted",
+        "nonpositive_price": "not a price",
+        "over_adjusted": "past 1.75x the number describes the adjustment schedule, not the market",
+    }
+
+    stage(1, "Collection", "What the venues published, and what was discarded before it could count.")
+    funnel = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    funnel.add_column("step", no_wrap=True)
+    funnel.add_column("count", justify="right", no_wrap=True)
+    funnel.add_column("decision")
+    funnel.add_row("raw observations", f"[bold]{len(observations)}[/]", "[dim]exactly as each venue stated them[/]")
+    dropped_admin = len(observations) - len(informative)
+    if dropped_admin:
+        funnel.add_row(
+            "administered", f"[red]-{dropped_admin}[/]",
+            "; ".join(f.detail for f in admin_flags),
+        )
+    for code, count in sorted(rejected.items(), key=lambda kv: -kv[1]):
+        funnel.add_row(code.replace("_", " "), f"[red]-{count}[/]", reasons.get(code, ""))
+    funnel.add_row("normalised", f"[bold green]{len(quotes)}[/]", "[dim]across all five indices[/]")
+    funnel.add_row(f"for {index_code}", f"[bold green]{len(mine)}[/]", "[dim]this index only[/]")
+    console.print(funnel)
+
+    # -- 2. restatement -----------------------------------------------------
+    stage(
+        2, "Restating to the benchmark good",
+        "An H100-hour is not one good. Every input is expressed as the standard "
+        "contract or discarded -- and this is the most criticisable step, so it is measured.",
+    )
+    adj = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    adj.add_column("factor", no_wrap=True)
+    adj.add_column("share of inputs touched", justify="right", no_wrap=True)
+    if exposure_row.by_factor:
+        for name, share in sorted(exposure_row.by_factor.items(), key=lambda kv: -kv[1]):
+            adj.add_row(name.replace("_", " "), f"{share:.0%}")
+    else:
+        adj.add_row("[dim]none[/]", "[dim]every input conformed as observed[/]")
+    console.print(adj)
+    console.print(
+        f"  [bold]{exposure_row.conforming_quotes}[/] of [bold]{exposure_row.total_quotes}[/] "
+        f"inputs conformed natively; "
+        f"[bold]{exposure_row.weight_share_adjusted:.0%}[/] of contributing weight rests on adjusted ones"
+    )
+    if exposure_row.conforming_only is not None and exposure_row.shift is not None:
+        console.print(
+            f"  recomputed from conforming inputs alone: {_fmt(exposure_row.conforming_only)} "
+            f"([bold]{exposure_row.shift:+.1%}[/]) -- the schedule is influential, not decisive"
+        )
+    else:
+        console.print(
+            "  [yellow]no counterfactual[/] -- too few natively conforming inputs to clear the "
+            "gates, so this index exists because of the adjustment schedule"
+        )
+
+    # -- 3. estimation ------------------------------------------------------
+    contributing = est.contributing
+    screened = [p for p in est.providers if p.screened_out]
+    total_weight = sum(p.weight for p in contributing) or 1.0
+
+    stage(
+        3, "One vote per provider, then screen and weight",
+        "Collapse to a median per venue so forty SKUs is one vote. Screen on MAD, which has a "
+        "50% breakdown point. Weight by what an input proves, and cap any venue at 35%.",
+    )
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    table.add_column("provider", no_wrap=True)
+    table.add_column("median", justify="right", no_wrap=True)
+    table.add_column("quotes", justify="right", no_wrap=True)
+    table.add_column("tier", justify="center", no_wrap=True)
+    table.add_column("weight", justify="right", no_wrap=True)
+    table.add_column("share", justify="right", no_wrap=True)
+    table.add_column("note")
+    tier_label = {1: "[green]1[/]", 2: "2", 3: "[dim]3[/]"}
+    for agg in sorted(contributing, key=lambda a: a.price):
+        table.add_row(
+            agg.provider, _fmt(agg.price), str(agg.quote_count),
+            tier_label.get(int(agg.best_tier), "?"),
+            f"{agg.weight:.2f}", f"{agg.weight / total_weight:.1%}", "",
+        )
+    for agg in sorted(screened, key=lambda a: a.price):
+        table.add_row(
+            f"[strike dim]{agg.provider}[/]", f"[dim]{_fmt(agg.price)}[/]",
+            f"[dim]{agg.quote_count}[/]", f"[dim]{int(agg.best_tier)}[/]",
+            "[dim]--[/]", "[dim]--[/]", f"[red]{agg.screen_reason}[/]",
+        )
+    console.print(table)
+    console.print(
+        f"  weighted mean of [bold]{len(contributing)}[/] surviving providers = "
+        f"[bold cyan]{_fmt(est.value)}[/]"
+        + (f"   [dim]({len(screened)} screened)[/]" if screened else "")
+    )
+
+    # -- 4. gates -----------------------------------------------------------
+    stage(
+        4, "Publication gates",
+        "Every enabled gate must hold. A gap in the series is a fact about the market; "
+        "an interpolated value is a fiction about it.",
+    )
+    gates = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    gates.add_column(" ", no_wrap=True)
+    gates.add_column("gate", no_wrap=True)
+    gates.add_column("detail")
+    for gate in est.gates:
+        gates.add_row(
+            "[bold green]PASS[/]" if gate.passed else "[bold red]FAIL[/]",
+            gate.name.replace("_", " "),
+            gate.detail if gate.passed else f"[bold red]{gate.detail}[/]",
+        )
+    console.print(gates)
+
+    console.print()
+    if published:
+        console.print(
+            Panel(f"every gate cleared  ->  published at [bold]{headline}[/]",
+                  border_style="green", expand=False)
+        )
+    else:
+        console.print(
+            Panel(
+                f"the estimator produced [bold]{_fmt(est.value)}[/] and it was "
+                f"[bold yellow]not published[/]\n"
+                f"[dim]{row['withheld_reason'] or ''}[/]",
+                border_style="yellow", expand=False,
+            )
+        )
+
+    if est.flags:
+        console.print("[dim]flags raised on this index[/]")
+        for flag in est.flags:
+            style = SEVERITY_STYLE.get(flag.severity, "")
+            console.print(f"  [{style}]{flag.code:28}[/] {flag.detail}")
 
 
 @app.command("export-web")
