@@ -90,10 +90,26 @@ types, the ratio is a direct observation of what it charges for the difference
 — but only when that ratio is a price rather than a policy. `gpuidx calibrate`
 measures it:
 
-| Venue | Tier | Pairs | Observed | Asserted | Error | CV | Verdict |
-|---|---|---|---|---|---|---|---|
-| RunPod | community | 41 | 1.316 | 1.30 | +1.2% | 0.93 | market-determined, supports the factor |
-| DataCrunch | spot | 54 | 2.000 | 1.45 | +37.9% | 0.0001 | administered policy, excluded |
+These are measurements of a live market, not constants. Both runs below are
+reproducible with `gpuidx calibrate`; the dates matter.
+
+| Run | Venue | Tier | Pairs | Observed | Asserted | Error | CV | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| 2026-08-27 | RunPod | community | 41 | 1.316 | 1.30 | +1.2% | 0.93 | supports |
+| 2026-09-07 | RunPod | community | 39 | 1.380 | 1.30 | +6.1% | 0.85 | supports |
+| 2026-09-07 | DataCrunch | spot | 54 | 2.000 | 1.45 | +37.9% | 0.0001 | administered, excluded |
+
+**The point estimate drifts and the verdict does not.** Eleven days moved the
+observed community ratio from 1.316 to 1.380 — from 1% off the asserted factor
+to 6% off. So the factor is supported but not pinned, and quoting either number
+without its date overstates what is known.
+
+What is stable is the *dispersion*, which is the thing the test actually rests
+on: RunPod's coefficient of variation is 0.85 and DataCrunch's is 0.0001, three
+orders of magnitude apart, on every run. A market-determined spread is noisy
+because supply and demand differ per model; an administered one is identical
+everywhere. That separation is what distinguishes a price from a policy, and it
+has not moved.
 
 RunPod's community-to-secure ratio varies from 0.31 to 7.58 across models. That
 dispersion is what a real spread looks like, and its median lands within 1.2%
@@ -119,26 +135,44 @@ should be read as the weakest number in this document.
 `gpuidx sensitivity`, which recomputes each index from inputs that conformed
 to the benchmark contract as observed and discards every adjusted one:
 
-| Index | Published | Conforming only | Shift | Conforming inputs | Adjusted weight |
-|---|---|---|---|---|---|
-| GIX-H100 | $3.115 | $3.029 | **+2.8%** | 10 of 52 | 82% |
-| GIX-H200 | $3.400 | — | — | 6 of 14 | 50% |
-| GIX-A100 | $2.179 | — | — | 7 of 33 | 86% |
-| GIX-B200 | $5.676 | — | — | 4 of 13 | 60% |
-| GIX-MI300X | — | — | — | 0 of 2 | 100% |
+| Run | Index | Published | Conforming only | Shift | Conforming inputs | Adjusted weight |
+|---|---|---|---|---|---|---|
+| 2026-08-27 | GIX-H100 | $3.115 | $3.029 | **+2.8%** | 10 of 52 | 82% |
+| 2026-08-27 | GIX-H200 | $3.400 | — | — | 6 of 14 | 50% |
+| 2026-08-27 | GIX-A100 | $2.179 | — | — | 7 of 33 | 86% |
+| 2026-08-27 | GIX-B200 | $5.676 | — | — | 4 of 13 | 60% |
+| 2026-08-27 | GIX-MI300X | — | — | — | 0 of 2 | 100% |
+| 2026-09-07 | GIX-H100 | $3.071 | — | — | 9 of 50 | 83% |
+| 2026-09-07 | GIX-B200 | $6.152 | — | — | 4 of 27 | 70% |
+
+**Update, 2026-09-07: the one counterfactual this document had is gone.** On the
+27 August run `GIX-H100` retained enough natively conforming supply to recompute
+without the adjustment schedule, and the answer moved 2.8%. Eleven days later it
+does not: 9 of 50 inputs conform, which no longer clears the publication gates.
+
+So as of this run **no index has a counterfactual at all**, and the concession
+below applies to all five rather than to four. That is a worse position than the
+one originally documented, and it moved in the wrong direction on its own —
+coverage shifted, not the methodology.
 
 Two readings, and the second is uncomfortable.
 
-For `GIX-H100` the schedule is influential but not decisive: 82% of
-contributing weight rests on adjusted inputs, yet removing them entirely moves
-the fixing by 2.8%. The adjustments are doing what they are supposed to do —
-making heterogeneous supply comparable — rather than manufacturing the answer.
+**On 27 August** `GIX-H100` had a counterfactual, and it was reassuring: 82% of
+contributing weight rested on adjusted inputs, yet removing them entirely moved
+the fixing by only 2.8%. The adjustments were doing what they are supposed to
+do — making heterogeneous supply comparable — rather than manufacturing the
+answer. Every other index already lacked one.
 
-For every other index there is **no counterfactual at all**. Too few venues
-sell the benchmark configuration natively to clear the publication gates, so
-those indices do not merely lean on the adjustment schedule; they exist
-because of it. That is a materially different claim from the one `GIX-H100`
-supports, and it is disclosed rather than averaged away.
+**On 7 September that reassurance is gone.** No index retains enough natively
+conforming supply to clear the gates without the adjustment schedule, so no
+index has a counterfactual. All five now stand where four stood before: they do
+not merely lean on the schedule, they exist because of it.
+
+That is the more honest statement of the position, and it should be read as a
+warning rather than a detail. The measurement that made this document's weakest
+section defensible was a property of one run's coverage, not of the method, and
+it did not survive eleven days. Anything settling against these values inherits
+that.
 
 **Region is screened, not adjusted.** Cross-border price differences reflect
 power costs, tax regimes, and latency to demand — a single scalar cannot
