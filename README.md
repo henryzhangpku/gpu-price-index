@@ -16,10 +16,17 @@ particularly section 10.
 
 ```bash
 uv sync
-uv run gpuidx rebuild     # restore the series from the committed archive
-uv run gpuidx show GIX-H100
-uv run gpuidx verify      # prove every value reproduces from its own inputs
+uv run gpuidx rebuild                        # restore the series from the committed archive
+uv run gpuidx explain GIX-H100 2026-09-07    # how one value was produced, end to end
+uv run gpuidx verify                         # prove every value reproduces from its own inputs
 ```
+
+**Start with `explain`.** It walks a single fixing from the raw archived file to
+the published number: what each venue said, what was discarded and why, how much
+of the result rests on judgement rather than observation, which providers
+survived the outlier screen, and which gates the remaining sample had to clear.
+Run it against `GIX-A100` on a day it withheld and it shows the refusal with the
+same detail as a print.
 
 That path needs no network and no credentials — it reads the archive in this
 repo. `uv run gpuidx publish` runs a live collection instead, which is what the
@@ -97,6 +104,7 @@ fact the record has to carry, not an absence of one.
 uv run gpuidx contracts                    # benchmark definitions and gates
 uv run gpuidx publish                      # run one collection + fixing cycle
 uv run gpuidx show GIX-H100                # the series
+uv run gpuidx explain GIX-H100 2026-08-27  # the whole derivation, end to end
 uv run gpuidx audit GIX-H100 2026-08-27    # every provider behind one value
 uv run gpuidx revisions GIX-H100 2026-08-27
 uv run gpuidx as-of GIX-H100 2026-08-27 2026-08-27T20:15:00Z
@@ -108,8 +116,10 @@ uv run gpuidx sensitivity                  # how much of each fixing rests on ju
 uv run gpuidx export-web                   # dump the archive as JSON for the demo site
 ```
 
-`audit` is the one worth looking at. It shows every contributing provider,
-its weight and share, and every provider that was screened out and why.
+`explain` is the one worth looking at. `audit` shows the providers behind a
+number; `explain` shows everything around them -- the collection funnel, the
+adjustment exposure, the screen, and the gates -- with the reasoning for each
+decision printed next to it.
 
 ## Demo site
 
