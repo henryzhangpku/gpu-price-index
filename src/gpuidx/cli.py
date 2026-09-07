@@ -82,7 +82,8 @@ def publish(
         )
     )
 
-    table = Table(title="daily fixing", header_style="bold")
+    table = Table(title="[bold]daily fixing[/]", title_justify="left",
+                  box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     table.add_column("index")
     table.add_column("value", justify="right")
     table.add_column("prov", justify="right")
@@ -123,24 +124,43 @@ def show(
         console.print(f"[yellow]no values for {index_code}[/]")
         raise typer.Exit(1)
 
+    # A one-line summary, not a panel. The full contract belongs in `contracts`;
+    # printing it in a box above every series turned the thing you asked for
+    # into the smallest object on screen.
     contract = CONTRACTS.get(index_code)
+    subtitle = ""
     if contract:
-        console.print(Panel(contract.describe(), title=contract.display_name, expand=False))
+        subtitle = (
+            f"1x {contract.gpu_model} {contract.form_factor.value.upper()} "
+            f"{contract.vram_gb}GB, {contract.commitment.value.replace('_', '-')}, "
+            f"{contract.node_size}-GPU {contract.interconnect.value}, {contract.region}"
+        )
 
-    table = Table(header_style="bold")
+    table = Table(
+        box=box.SIMPLE_HEAD,
+        header_style="bold",
+        pad_edge=False,
+        title=f"[bold]{index_code}[/]" + (f"  ·  {contract.display_name}" if contract else ""),
+        title_justify="left",
+        caption=f"[dim]{subtitle}[/]" if subtitle else None,
+        caption_justify="left",
+    )
     for column in ("date", "value", "rev", "prov", "obs", "disp", "status"):
-        table.add_column(column, justify="right" if column != "status" else "left")
+        table.add_column(column, justify="right" if column != "status" else "left", no_wrap=True)
     for row in rows:
+        published = row["status"] == "published"
         table.add_row(
             row["index_date"],
-            _fmt(row["value"]),
-            str(row["revision"]),
+            f"[bold cyan]{_fmt(row['value'])}[/]" if published else "[dim]--[/]",
+            str(row["revision"]) if row["revision"] else "[dim]0[/]",
             str(row["provider_count"]),
             str(row["observation_count"]),
-            f"{row['dispersion']:.3f}" if row["dispersion"] is not None else "--",
-            row["status"] if row["status"] == "published" else f"[red]{row['status']}[/]",
+            f"{row['dispersion']:.3f}" if row["dispersion"] is not None else "[dim]--[/]",
+            "[green]● published[/]" if published else "[yellow]○ withheld[/]",
         )
+    console.print()
     console.print(table)
+    console.print()
     store.close()
 
 
@@ -169,7 +189,8 @@ def audit(
         )
     )
 
-    table = Table(title="contributions", header_style="bold")
+    table = Table(title="[bold]contributions[/]", title_justify="left",
+                  box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     table.add_column("provider")
     table.add_column("price", justify="right")
     table.add_column("weight", justify="right")
@@ -273,7 +294,7 @@ def revisions(
         console.print("[yellow]no revisions[/]")
         raise typer.Exit(1)
 
-    table = Table(header_style="bold")
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     for column in ("rev", "value", "status", "published_at", "superseded_at", "reason"):
         table.add_column(column)
     for row in rows:
@@ -299,8 +320,33 @@ def contracts() -> None:
     blocking. Printing all five under one heading claims a stronger guarantee
     than the code provides. METHODOLOGY section 7 draws the same line.
     """
+    # One row per contract rather than five full-width panels. The panels made
+    # you scroll past the definitions to reach the three numbers most people
+    # open this command for.
+    defs = Table(title="[bold]benchmark-equivalent contracts[/]", title_justify="left",
+                 box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False,
+                 caption="[dim]every input is restated as one of these, or discarded[/]",
+                 caption_justify="left")
+    for column in ("index", "GPU", "form", "VRAM", "node", "fabric", "region"):
+        defs.add_column(column, justify="right" if column in ("VRAM", "node") else "left",
+                        no_wrap=True)
     for contract in CONTRACTS.values():
-        console.print(Panel(contract.describe(), title=f"{contract.index_code} - {contract.display_name}"))
+        defs.add_row(
+            f"[bold]{contract.index_code}[/]",
+            contract.gpu_model,
+            contract.form_factor.value.upper(),
+            f"{contract.vram_gb}GB",
+            str(contract.node_size),
+            contract.interconnect.value,
+            contract.region,
+        )
+    console.print()
+    console.print(defs)
+    console.print(
+        "[dim]  priced in USD per GPU-hour, dedicated and non-preemptible. Excludes "
+        "persistent storage,\n  egress, support tiers, and any committed-use or credit "
+        "discount.[/]\n"
+    )
     gates = DEFAULT_GATES
     console.print(
         Panel(
@@ -418,7 +464,8 @@ def calibrate_cmd() -> None:
         console.print("[yellow]no venue priced the same hardware two ways[/]")
         raise typer.Exit(1)
 
-    table = Table(title="commitment factors: observed vs asserted", header_style="bold")
+    table = Table(title="[bold]commitment factors: observed vs asserted[/]", title_justify="left",
+                  box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     for column in ("venue", "tier", "n", "obs", "asserted", "err", "CV", "verdict"):
         table.add_column(
             column,
@@ -478,7 +525,8 @@ def forward_cmd(
         )
     )
 
-    table = Table(title="implied annual decline by assumed risk premium", header_style="bold")
+    table = Table(title="[bold]implied annual decline by assumed risk premium[/]", title_justify="left",
+                  box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     table.add_column("vendor")
     table.add_column("tenor", justify="right")
     table.add_column("of on-demand", justify="right")
@@ -502,7 +550,8 @@ def forward_cmd(
     )
 
     console.print()
-    projection = Table(title=f"expected level from spot ${spot:.2f}/GPU-hr", header_style="bold")
+    projection = Table(title=f"[bold]expected level from spot ${spot:.2f}/GPU-hr[/]", title_justify="left",
+                     box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     for column in ("assumption", "1 year", "2 years", "3 years"):
         projection.add_column(column, justify="left" if column == "assumption" else "right")
     for premium in (0.0, 0.10, 0.20):
@@ -575,7 +624,7 @@ def sensitivity_cmd(
         )
     )
 
-    table = Table(header_style="bold")
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     for column in ("index", "published", "conforming only", "shift", "conforming", "adj weight", "still publishable"):
         table.add_column(column, justify="left" if column == "index" else "right", no_wrap=True)
 
@@ -819,7 +868,7 @@ def export_web_cmd(
 
     written = write_bundle(ARCHIVE_ROOT, out)
 
-    table = Table(header_style="bold")
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     table.add_column("file")
     table.add_column("bytes", justify="right")
     for path in written:
