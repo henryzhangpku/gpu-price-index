@@ -26,6 +26,7 @@ from .quality import (
     check_feed_staleness,
     check_level_shift,
     check_provider_dropout,
+    check_provider_level_shift,
 )
 from .spec import CONTRACTS, DEFAULT_GATES, Gates
 from .store import Store
@@ -105,6 +106,7 @@ def run_daily(
         index_flags = list(est.flags)
         index_flags += check_adjustment_load(index_quotes)
         index_flags += check_level_shift(store, code, index_date, est.value, gates)
+        index_flags += check_provider_level_shift(store, code, index_date, est.providers)
         for flag in index_flags:
             flag.index_code = code
         store.record_flags(run_id, index_flags, index_code=code, index_date=index_date)
