@@ -1284,6 +1284,36 @@ def weights_cmd(
     console.print()
     console.print(tiers)
 
+    # -- where the shares come from -----------------------------------------
+    # The per-provider table shows the answer. This shows the arithmetic, so
+    # nobody has to take the percentages on trust or reconstruct them by hand
+    # in front of the person asking.
+    from collections import Counter
+
+    by_tier = Counter(int(a.best_tier) for a in live)
+
+    sums = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False, show_header=False)
+    sums.add_column("group", no_wrap=True)
+    sums.add_column("arithmetic", justify="right", no_wrap=True)
+    for tier_no in sorted(by_tier):
+        n = by_tier[tier_no]
+        w = TIER_WEIGHTS[tier_no]
+        sums.add_row(f"tier {tier_no} x {n}", f"{n} x {w:.2f}  =  {n * w:.2f}")
+    sums.add_row("[bold]sum of weights[/]", f"[bold]{natural_total:.2f}[/]")
+    for tier_no in sorted(by_tier):
+        w = TIER_WEIGHTS[tier_no]
+        sums.add_row(
+            f"[dim]each tier-{tier_no}[/]",
+            f"[dim]{w:.2f} / {natural_total:.2f}  =  {w / natural_total:.1%}[/]",
+        )
+
+    console.print()
+    console.print("  [bold]where the shares come from[/]")
+    console.print(sums)
+    console.print("  [dim]Sum the weights, then divide. Nothing else enters it --[/]")
+    console.print("  [dim]note the quote count appears nowhere in this arithmetic.[/]")
+
+
     table = Table(
         box=box.SIMPLE_HEAD,
         header_style="bold",
@@ -1294,10 +1324,10 @@ def weights_cmd(
     table.add_column("provider", no_wrap=True)
     table.add_column("price", justify="right")
     table.add_column("tier", justify="right")
-    table.add_column("natural w", justify="right")
-    table.add_column("uncapped", justify="right")
+    table.add_column("nat w", justify="right")
+    table.add_column("uncap", justify="right")
     table.add_column("final w", justify="right")
-    table.add_column("final", justify="right")
+    table.add_column("share", justify="right")
     for agg in live:
         natural = TIER_WEIGHTS[int(agg.best_tier)]
         was_capped = agg.weight < natural - 1e-9
