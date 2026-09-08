@@ -436,7 +436,41 @@ marketing document.
    a single provider, so its breadth is understated by the same convention that
    overstates the aggregator's. See section 6.
 
-7. **The dispersion gate is not stable at current provider counts.** Two runs
+7. **The outlier screen defends the wrong tail.** The keep band is median
+   plus or minus three robust sigma, which is symmetric in dollars on a
+   quantity that is positive and right-skewed. On the 7 September H100 panel
+   that band runs from **-0.745 to 7.240**: its lower edge is below zero, so
+   nothing can ever be screened for being too cheap, and every provider the
+   screen removes is an expensive one.
+
+   That is not only an aesthetic asymmetry. It is the direction an attacker
+   wants. A contributor short a contract settling against the index profits
+   from a lower print, and a tier-1 provider moving its own median from $4.01
+   to $0.90 sits **1.85 sigma** from the panel median -- inside the band, so it
+   is kept. It clears the dispersion gate at 0.386, never approaches the 35%
+   concentration cap at an 11.8% share, and moves the fixing **-12.0%**, which
+   is under the 15% index-level review threshold. Every defence in section 5
+   is shaped around the *panel*; none of them watches a contributor changing
+   its own mind.
+
+   Partially mitigated rather than fixed. `check_provider_level_shift` now
+   raises a warning when any contributing provider's own median moves more
+   than **25%** since the previous fixing. That threshold is measured, not
+   chosen: across 403 provider day-over-day observations in the archive the
+   median move is 0.0%, the 90th percentile is 0.0%, the 95th is 5.2% and the
+   99th is 21.2%. It fires on Vast.ai, whose median absolute daily move is 5.6%
+   and whose maximum is 82% -- accepted rather than tuned away, because a
+   marketplace median moving 82% in a day deserves a human look even when it is
+   honest, and a per-venue threshold needs far more than twelve days of
+   archive.
+
+   The real fix is to screen in **log space**, so both tails are treated alike.
+   That is a methodology change rather than a patch, and it would alter
+   historical values, so it belongs in a versioned review rather than here.
+   The institutional fix is a contributor agreement: the defence against a
+   participant holding a position is contractual, not statistical.
+
+8. **The dispersion gate is not stable at current provider counts.** Two runs
    an hour apart on an unmoved market produced dispersion of 0.560 (10
    providers, withheld) and 0.365 (9 providers, published). MAD over roughly
    ten points is a coarse order statistic, and adding one mid-range provider
@@ -447,7 +481,7 @@ marketing document.
    as an open defect rather than patched with a guessed constant. See
    [docs/FINDINGS.md](docs/FINDINGS.md) section 2.
 
-8. **The outlier screen can conceal a bad input.** During development an
+9. **The outlier screen can conceal a bad input.** During development an
    incorrect AWS figure was extreme enough to be screened as an outlier, which
    tightened the surviving distribution and let `GIX-A100` publish at
    dispersion 0.365. Correcting the input to its true value put it inside the
@@ -457,7 +491,7 @@ marketing document.
    for verifying inputs at the source, and the screen log must be reviewed
    rather than treated as self-healing.
 
-9. **Screening and adjusting are applied inconsistently, and the consistent
+10. **Screening and adjusting are applied inconsistently, and the consistent
    alternative would remove most of the coverage.** Region is screened because
    a scalar cannot honestly collapse power and tax regimes, and that reasoning
    applies just as well to form factor: a PCIe card on Ethernet is a different

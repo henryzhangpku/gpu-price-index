@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
+from .estimator import ProviderAggregate
 from .models import NormalizedQuote, QualityFlag, RawObservation
 from .spec import Gates
 from .store import Store
@@ -184,3 +185,85 @@ def check_adjustment_load(quotes: list[NormalizedQuote]) -> list[QualityFlag]:
             ),
         )
     ]
+
+
+#: A provider's own median moving this far day over day is worth a human look.
+#:
+#: Measured rather than chosen. Across 403 provider day-over-day observations
+#: in the archive, the median move is 0.0%, the 90th percentile is 0.0%, the
+#: 95th is 5.2% and the 99th is 21.2%. Rate cards are almost perfectly sticky;
+#: essentially all of the movement comes from one venue. 25% therefore sits
+#: just above the observed 99th percentile.
+#:
+#: The population is sharply bimodal, and the threshold is a compromise across
+#: it: eighteen venues have a median absolute daily move of exactly zero, while
+#: Vast.ai -- a marketplace of independent hosts -- has a median of 5.6% and a
+#: maximum of 82%. So this will fire on Vast.ai's genuine moves. That is
+#: accepted rather than tuned away: a marketplace median moving 82% in a day is
+#: worth a human look even when it is entirely honest, and a per-provider
+#: threshold fitted to each venue's own history needs far more than the twelve
+#: days of archive that exist today.
+PROVIDER_LEVEL_SHIFT = 0.25
+
+
+def check_provider_level_shift(
+    store: Store,
+    index_code: str,
+    index_date: date,
+    aggregates: list[ProviderAggregate],
+) -> list[QualityFlag]:
+    """Flag a single contributor whose own price moved sharply since the last fixing.
+
+    The index-level ``check_level_shift`` watches the published number. It
+    cannot see the attack it most needs to: one provider moving its own median
+    a long way while the index moves less than the index-level threshold.
+
+    Concretely, on the 7 September H100 panel a tier-1 provider moving from
+    $4.01 to $0.90 sits 1.85 robust sigma from the median -- inside the keep
+    band, so the outlier screen keeps it -- passes the dispersion gate, and
+    never approaches the 35% concentration cap at an 11.8% share. It moves the
+    fixing 12%, which is under the 15% index-level review threshold. Every
+    existing defence lets it through, because they are all designed around the
+    *shape of the panel* rather than around a contributor changing its mind.
+
+    This does not block publication, for the same reason the index-level check
+    does not: a venue is entitled to reprice. It demands that someone looks.
+    """
+    previous = store.previous_published(index_code, index_date)
+    if previous is None:
+        return []
+
+    prior_rows = store.contributions(
+        index_code, date.fromisoformat(previous["index_date"]), previous["revision"]
+    )
+    prior = {
+        row["provider"]: float(row["price"])
+        for row in prior_rows
+        if not row["screened_out"] and row["price"]
+    }
+    if not prior:
+        return []
+
+    flags: list[QualityFlag] = []
+    for agg in aggregates:
+        if agg.screened_out:
+            continue
+        before = prior.get(agg.provider)
+        if not before or before <= 0:
+            continue
+        move = (agg.price - before) / before
+        if abs(move) <= PROVIDER_LEVEL_SHIFT:
+            continue
+        flags.append(
+            QualityFlag(
+                severity="warn",
+                index_code=index_code,
+                code="provider_level_shift",
+                detail=(
+                    f"{agg.provider} moved {move:+.1%} from ${before:.3f} "
+                    f"({previous['index_date']}) to ${agg.price:.3f}; exceeds the "
+                    f"{PROVIDER_LEVEL_SHIFT:.0%} contributor review threshold"
+                ),
+            )
+        )
+    return flags
