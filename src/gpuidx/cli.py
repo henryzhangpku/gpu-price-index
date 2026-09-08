@@ -1104,5 +1104,254 @@ def export_web_cmd(
     console.print(table)
 
 
+def _latest_fixing_date() -> str:
+    """Newest index date on the tape, so the date argument can be optional."""
+    from .archive import read_tape
+
+    dates = [r["index_date"] for r in read_tape(ARCHIVE_ROOT)]
+    if not dates:
+        console.print("[yellow]no fixings on the tape[/]")
+        raise typer.Exit(1)
+    return max(dates)
+
+
+@app.command("screen")
+def screen_cmd(
+    index_code: str = typer.Argument(...),
+    index_date: str | None = typer.Argument(None, help="Defaults to the latest fixing"),
+) -> None:
+    """Show the outlier screen provider by provider, with the arithmetic.
+
+    Screening is the step people are most suspicious of, because it is the one
+    where the administrator removes data. The answer to that suspicion is that
+    the rule is mechanical and the working is public: every provider faces the
+    same test against the same threshold, and the casualties are printed with
+    their numbers beside the survivors.
+    """
+    import statistics
+
+    from .estimator import DEGENERATE_RATIO_TOLERANCE, MAD_TO_SIGMA, OUTLIER_SIGMAS
+
+    index_date = index_date or _latest_fixing_date()
+    est, detail = estimate_from_archive(ARCHIVE_ROOT, index_code, index_date)
+    if est is None:
+        console.print(f"[yellow]{detail}[/]")
+        raise typer.Exit(1)
+
+    providers = sorted(est.providers, key=lambda a: a.price)
+    prices = [a.price for a in providers]
+    if not prices:
+        console.print("[yellow]no providers on this fixing[/]")
+        raise typer.Exit(1)
+
+    median = statistics.median(prices)
+    mad = statistics.median([abs(p - median) for p in prices])
+    sigma = mad * MAD_TO_SIGMA
+    degenerate = sigma <= 0
+
+    console.print(
+        Panel(
+            f"[bold]{index_code}[/]  ·  {index_date}\n"
+            f"[dim]{len(providers)} providers before the screen[/]",
+            border_style="cyan",
+            expand=False,
+        )
+    )
+
+    setup = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False, show_header=False)
+    setup.add_column("step", no_wrap=True)
+    setup.add_column("value", justify="right", no_wrap=True)
+    setup.add_column("note", style="dim")
+    setup.add_row("median of all prices", f"{median:.4f}", "the reference point, unmovable by any one quote")
+    setup.add_row("MAD", f"{mad:.4f}", "median absolute deviation from that median")
+    setup.add_row(f"x {MAD_TO_SIGMA}", f"{sigma:.4f}", "MAD rescaled to a standard deviation")
+    console.print()
+    console.print(setup)
+
+    if degenerate:
+        console.print(
+            "\n[yellow]  MAD is zero: at least half the providers quote the identical price.[/]\n"
+            "  [dim]There is no scale left to measure distance in, so the sigma test cannot\n"
+            f"  run at all. The fallback is a ratio test against that consensus: anything\n"
+            f"  more than {DEGENERATE_RATIO_TOLERANCE:g}x away from it, either direction, is screened.\n"
+            "  This is the case that once published $200,002, when four providers at $3.00\n"
+            "  sat beside one at $1,000,000 and a zero MAD made the outlier invisible.[/]"
+        )
+    else:
+        lo = median - OUTLIER_SIGMAS * sigma
+        hi = median + OUTLIER_SIGMAS * sigma
+        console.print(
+            f"\n  [bold]keep band[/]  {lo:.3f} .. {hi:.3f}   "
+            f"[dim](median +/- {OUTLIER_SIGMAS:g} robust sigma)[/]"
+        )
+        if lo <= 0:
+            console.print("  [dim]The band is symmetric in dollars, but price is positive and right-skewed,[/]")
+            console.print("  [dim]so the lower edge falls below zero and nothing can ever be screened for[/]")
+            console.print("  [dim]being too cheap. Only expensive quotes are reachable. Screening in log[/]")
+            console.print("  [dim]space would treat both tails alike; this does not, and that asymmetry[/]")
+            console.print("  [dim]is why every screened provider today is a hyperscaler.[/]")
+
+    table = Table(
+        box=box.SIMPLE_HEAD,
+        header_style="bold",
+        pad_edge=False,
+        title="[bold]the same test, applied to every provider[/]",
+        title_justify="left",
+    )
+    table.add_column("provider", no_wrap=True)
+    table.add_column("price", justify="right")
+    table.add_column("gap to median", justify="right")
+    table.add_column("ratio" if degenerate else "/ sigma", justify="right")
+    table.add_column("verdict")
+    for agg in providers:
+        gap = abs(agg.price - median)
+        if degenerate:
+            ratio = max(agg.price / median, median / agg.price) if agg.price > 0 else float("inf")
+            measure = f"{ratio:.1f}x"
+        else:
+            measure = f"{gap / sigma:.2f}"
+        screened = agg.screened_out
+        table.add_row(
+            f"[dim]{agg.provider}[/]" if screened else agg.provider,
+            f"{agg.price:.3f}",
+            f"{gap:.3f}",
+            measure,
+            "[red]screened[/]" if screened else "[green]kept[/]",
+        )
+    console.print()
+    console.print(table)
+
+    dropped = [a for a in providers if a.screened_out]
+    kept = [a for a in providers if not a.screened_out]
+    if dropped:
+        console.print(f"  [bold]{len(dropped)} screened, {len(kept)} kept.[/]")
+        console.print("  [dim]Screened prices are not deleted. They stay in the snapshot[/]")
+        console.print("  [dim]and in `audit`, so the removal is auditable rather than[/]")
+        console.print("  [dim]invisible. What a screened provider loses is weight, not[/]")
+        console.print("  [dim]existence.[/]")
+    else:
+        console.print(f"  [bold]nothing screened.[/] [dim]All {len(kept)} sit inside the band.[/]")
+        console.print("  [dim]That is the usual outcome. The screen exists for the day it is not.[/]")
+    console.print()
+
+
+@app.command("weights")
+def weights_cmd(
+    index_code: str = typer.Argument(...),
+    index_date: str | None = typer.Argument(None, help="Defaults to the latest fixing"),
+) -> None:
+    """Show how each provider's influence was set: tier, then cap, then share.
+
+    Two rules decide influence and they pull against each other. The waterfall
+    says better evidence should count for more. The concentration cap says no
+    single provider should be able to move the fixing on its own, however good
+    its evidence is. This prints both, and the arithmetic that reconciles them.
+    """
+    from .spec import TIER_WEIGHTS
+
+    index_date = index_date or _latest_fixing_date()
+    est, detail = estimate_from_archive(ARCHIVE_ROOT, index_code, index_date)
+    if est is None:
+        console.print(f"[yellow]{detail}[/]")
+        raise typer.Exit(1)
+
+    live = sorted(est.contributing, key=lambda a: -a.weight)
+    if not live:
+        console.print("[yellow]no contributing providers[/]")
+        raise typer.Exit(1)
+
+    cap = DEFAULT_GATES.max_provider_weight_share
+    count = len(live)
+    total = sum(a.weight for a in live)
+    natural_total = sum(TIER_WEIGHTS[int(a.best_tier)] for a in live)
+
+    console.print(
+        Panel(
+            f"[bold]{index_code}[/]  ·  {index_date}\n"
+            f"[dim]{count} contributing providers, {cap:.0%} concentration cap[/]",
+            border_style="cyan",
+            expand=False,
+        )
+    )
+
+    tiers = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False, show_header=False)
+    tiers.add_column("tier", no_wrap=True)
+    tiers.add_column("weight", justify="right", no_wrap=True)
+    tiers.add_column("what it proves", style="dim")
+    tiers.add_row("1  executable", f"{TIER_WEIGHTS[1]:.2f}", "someone would have transacted at this")
+    tiers.add_row("2  rate card", f"{TIER_WEIGHTS[2]:.2f}", "someone published it, transactability unproven")
+    tiers.add_row("3  judgement", f"{TIER_WEIGHTS[3]:.2f}", "an administrator's estimate, deliberately faint")
+    console.print()
+    console.print(tiers)
+
+    table = Table(
+        box=box.SIMPLE_HEAD,
+        header_style="bold",
+        pad_edge=False,
+        title="[bold]per provider[/]",
+        title_justify="left",
+    )
+    table.add_column("provider", no_wrap=True)
+    table.add_column("price", justify="right")
+    table.add_column("tier", justify="right")
+    table.add_column("natural w", justify="right")
+    table.add_column("uncapped", justify="right")
+    table.add_column("final w", justify="right")
+    table.add_column("final", justify="right")
+    for agg in live:
+        natural = TIER_WEIGHTS[int(agg.best_tier)]
+        was_capped = agg.weight < natural - 1e-9
+        share = agg.weight / total
+        table.add_row(
+            agg.provider,
+            f"{agg.price:.3f}",
+            str(int(agg.best_tier)),
+            f"{natural:.2f}",
+            f"{natural / natural_total:.1%}",
+            f"[yellow]{agg.weight:.3f}[/]" if was_capped else f"{agg.weight:.2f}",
+            f"[yellow]{share:.1%}[/]" if was_capped else f"{share:.1%}",
+        )
+    console.print()
+    console.print(table)
+
+    capped = [a for a in live if a.weight < TIER_WEIGHTS[int(a.best_tier)] - 1e-9]
+    biggest = max(a.weight / total for a in live)
+
+    console.print("  [bold]did the cap bite?[/]")
+    if count * cap < 1.0:
+        console.print(
+            f"    feasibility   {count} x {cap:.0%} = {count * cap:.2f}  [red]< 1[/]\n"
+            "                  [dim]No allocation can respect the cap, so the weights are left\n"
+            "                  alone and the provider-count gate refuses the value instead.\n"
+            "                  Capping here would drive every weight to zero.[/]"
+        )
+    else:
+        console.print(
+            f"    feasibility   {count} x {cap:.0%} = {count * cap:.2f}  [green]>= 1[/]"
+            "  [dim]a legal allocation exists[/]"
+        )
+
+    if capped:
+        console.print(
+            f"    binding       [yellow]{len(capped)} provider(s)[/] exceeded {cap:.0%} and were solved down\n"
+            f"                  [dim]w / (w + rest) = {cap:g}  ->  w* = {cap:g} x rest / (1 - {cap:g})\n"
+            "                  Re-run after each cap: lowering one provider raises everyone\n"
+            "                  else's share, which can push a second one over.[/]"
+        )
+    else:
+        console.print(
+            f"    not binding   [dim]largest share is {biggest:.1%}, under the {cap:.0%} ceiling.\n"
+            "                  With this many providers the cap is idle. It is a thin-day\n"
+            "                  protection: it starts working when coverage collapses, which\n"
+            "                  is exactly when one provider could otherwise set the print.[/]"
+        )
+
+    weighted = sum(a.price * a.weight for a in live) / total
+    console.print("\n  [bold]the value[/]")
+    published = f"   [dim]published {est.value:.4f}[/]" if est.value is not None else ""
+    console.print(f"    sum(w x price) / sum(w) = [bold cyan]{weighted:.4f}[/]{published}")
+    console.print()
+
+
 if __name__ == "__main__":
     app()
