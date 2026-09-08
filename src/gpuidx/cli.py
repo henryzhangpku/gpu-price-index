@@ -446,12 +446,17 @@ def verify_cmd(
 
 @app.command("calibrate")
 def calibrate_cmd() -> None:
-    """Measure the commitment factors against what venues actually charge.
+    """Measure the adjustment factors against what venues actually charge.
 
-    Where a venue sells the same hardware under two commitment types, the
-    ratio is a direct observation of what it charges for the difference --
-    unless that ratio is identical on every SKU, in which case it is a
-    discount policy and carries no information.
+    Where a venue sells the same hardware two ways, the ratio between the two
+    prices is a direct observation of what it charges for the difference --
+    unless that ratio is identical on every SKU, in which case it is a discount
+    policy and carries no information.
+
+    Two factors can be checked this way. Commitment, where a venue quotes the
+    same box as on-demand and as spot or community. And form factor, where it
+    quotes the same GPU as PCIe and as SXM. The second was described in the
+    methodology as having no observable check; that was wrong.
     """
     from .providers import collect_all
 
@@ -493,8 +498,42 @@ def calibrate_cmd() -> None:
     console.print(table)
     console.print(
         "\nA constant ratio across every SKU is a pricing policy, not a market "
-        "spread. Only a dispersed ratio is evidence."
+        "spread. Only a dispersed ratio is evidence.\n"
     )
+
+    # -- form factor --------------------------------------------------------
+    from .calibrate import form_factor_ratios, form_factor_summary
+
+    ff = form_factor_ratios(collection.observations)
+    summary = form_factor_summary(ff)
+
+    if summary["venues"]:
+        ff_table = Table(title="[bold]form factor: observed vs asserted[/]", title_justify="left",
+                         box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+        for column in ("venue", "index", "pairs", "pcie/sxm", "implied factor"):
+            ff_table.add_column(column, justify="right" if column != "venue" and column != "index" else "left")
+        for item in ff:
+            ff_table.add_row(
+                item.source, item.index_code, str(item.pairs),
+                f"{item.median_ratio:.3f}", f"{item.implied_factor:.3f}",
+            )
+        console.print(ff_table)
+        lo, hi = summary["spread"]
+        console.print(
+            f"  pooled over [bold]{summary['venues']}[/] venues "
+            f"([dim]{summary['pairs']} pairs, but a venue's SKUs are one opinion[/]): "
+            f"ratio [bold]{summary['observed_ratio']:.3f}[/], "
+            f"implied factor [bold]{summary['implied_factor']:.3f}[/] "
+            f"against an asserted [bold]{summary['asserted']:.2f}[/] "
+            f"([bold]{summary['error']:+.1%}[/])"
+        )
+        console.print(f"  [dim]per-venue medians span {lo:.3f} to {hi:.3f}[/]")
+        console.print(
+            "\n[yellow]  METHODOLOGY section 4 says this factor has no observable check.[/]\n"
+            "[yellow]  That is wrong: the check exists and this is it.[/] Reported, not enforced —\n"
+            "  the sample is small, several pairs come from one venue, and moving a factor\n"
+            "  on this evidence would break the reproduction of every historical value.\n"
+        )
 
 
 @app.command("forward")
@@ -648,6 +687,108 @@ def sensitivity_cmd(
         console.print("\n[bold]share of inputs touched by each factor, highest across indices[/]")
         for name, share in sorted(factors.items(), key=lambda kv: -kv[1]):
             console.print(f"  {name:14} {share:.0%}")
+
+
+@app.command("restate")
+def restate_cmd(
+    index_code: str = typer.Argument(...),
+    source: str | None = typer.Option(None, help="Only this venue, e.g. runpod"),
+    index_date: str | None = typer.Option(None, "--date", help="Defaults to the latest fixing"),
+    limit: int = typer.Option(8, help="How many quotes to show"),
+) -> None:
+    """Show how individual quotes are restated as the benchmark good.
+
+    Section 4 of the methodology is the most criticisable part of the design,
+    and it is the step that is hardest to describe from memory: every factor,
+    in order, with the cumulative product and the cap it is measured against.
+    Discarded quotes are shown too, with the reason, because what was thrown
+    away is as much a part of the answer as what survived.
+    """
+    from .archive import SNAPSHOT_DIR, read_snapshot, read_tape
+    from .calibrate import drop_administered
+    from .normalize import Rejection, match_contract, normalize
+    from .spec import MAX_TOTAL_ADJUSTMENT
+
+    rows = read_tape(ARCHIVE_ROOT)
+    if index_date is None:
+        index_date = max((r["index_date"] for r in rows), default="")
+    named = [r.get("snapshot") for r in rows if r["index_date"] == index_date and r.get("snapshot")]
+    if not named:
+        console.print(f"[yellow]no snapshot named for {index_date}[/]")
+        raise typer.Exit(1)
+    path = ARCHIVE_ROOT / SNAPSHOT_DIR / named[-1]
+    if not path.exists():
+        console.print(f"[yellow]snapshot {named[-1]} missing from the archive[/]")
+        raise typer.Exit(1)
+
+    observations = read_snapshot(path).observations
+    informative, _ = drop_administered(observations)
+    kept_ids = {id(o) for o in informative}
+
+    mine = []
+    for obs in observations:
+        if source is not None and source not in obs.source:
+            continue
+        contract = match_contract(obs)
+        if contract is not None and contract.index_code == index_code:
+            mine.append(obs)
+
+    console.print(
+        Panel(
+            f"[bold]{index_code}[/]  ·  {index_date}"
+            + (f"  ·  {source}" if source else "")
+            + f"\n[dim]{len(mine)} observations matched this contract"
+            + (" from this venue" if source else "")
+            + f"; showing up to {limit}[/]",
+            border_style="cyan",
+            expand=False,
+        )
+    )
+
+    if not mine:
+        console.print("[yellow]nothing matched — try another source or index[/]")
+        raise typer.Exit(1)
+
+    for obs in mine[:limit]:
+        raw = obs.usd_per_gpu_hour
+        console.print(
+            f"\n[bold]{obs.source}[/]  [dim]{obs.source_sku}[/]\n"
+            f"  ${obs.usd_per_hour_total:.3f} for {obs.gpu_count} GPU"
+            f"{'s' if obs.gpu_count != 1 else ''}  ->  [bold]${raw:.4f}[/] per GPU-hour"
+        )
+
+        if id(obs) not in kept_ids:
+            console.print("  [red]dropped before normalisation: administered price[/]")
+            continue
+
+        try:
+            quote = normalize(obs)
+        except Rejection as rej:
+            console.print(f"  [red]discarded: {rej.code} — {rej.detail}[/]")
+            continue
+
+        if not quote.adjustments:
+            console.print("  [green]conforms to the benchmark contract as observed[/]")
+        else:
+            for adj in quote.adjustments:
+                console.print(
+                    f"    x {adj.factor:<5} [cyan]{adj.name:<13}[/] [dim]{adj.rationale}[/]"
+                )
+        total = quote.total_adjustment
+        headroom = MAX_TOTAL_ADJUSTMENT - total
+        console.print(
+            f"    [bold]= {total:.4f}[/] cumulative"
+            f"   [dim]cap {MAX_TOTAL_ADJUSTMENT}, headroom {headroom:.3f}[/]"
+        )
+        console.print(
+            f"  ${raw:.4f} x {total:.4f}  ->  [bold cyan]${quote.normalized_usd_per_gpu_hour:.4f}[/]"
+            f"   [dim]tier {int(quote.tier)}[/]"
+        )
+
+    console.print(
+        f"\n[dim]  Anything needing more than {MAX_TOTAL_ADJUSTMENT}x is discarded: past that the\n"
+        "  number describes the adjustment schedule rather than the market.[/]\n"
+    )
 
 
 @app.command("dispersion")

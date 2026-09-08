@@ -164,3 +164,115 @@ def compare_to_schedule(evidence: list[FactorEvidence]) -> list[dict]:
             }
         )
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Form factor
+# ---------------------------------------------------------------------------
+#
+# METHODOLOGY section 4 said the form-factor factor had "no observable check at
+# all". That was wrong, and only wrong because nobody looked. The same argument
+# that calibrates the commitment factor applies here: where one venue sells the
+# same GPU as PCIe and as SXM, at the same commitment and the same node size,
+# the ratio between those two prices is that venue telling you directly what it
+# charges for the difference.
+#
+# This is reported, not enforced. It measures a factor rather than screening an
+# input, and moving a factor on this evidence would be premature -- the sample
+# is small, several pairs come from one venue, and at least one venue quotes a
+# price that cannot be real.
+
+
+@dataclass
+class FormFactorEvidence:
+    """One venue's observed PCIe-to-SXM ratio for one benchmark contract."""
+
+    source: str
+    index_code: str
+    pairs: int
+    median_ratio: float
+    ratios: list[float] = field(default_factory=list)
+
+    @property
+    def implied_factor(self) -> float:
+        """The markup that would restate PCIe onto SXM, as this venue prices it."""
+        return 1.0 / self.median_ratio if self.median_ratio > 0 else float("inf")
+
+
+def form_factor_ratios(observations: list[RawObservation]) -> list[FormFactorEvidence]:
+    """Observed PCIe/SXM price ratios, per venue and benchmark contract.
+
+    Compared only within a venue, a contract, a commitment type and a node size,
+    so the ratio isolates form factor rather than picking up any other
+    difference between the two rows.
+    """
+    from .models import FormFactor
+    from .normalize import match_contract
+
+    groups: dict[tuple[str, str, str, int], dict[str, float]] = {}
+    for obs in observations:
+        if obs.form_factor not in (FormFactor.PCIE, FormFactor.SXM):
+            continue
+        contract = match_contract(obs)
+        if contract is None:
+            continue
+        price = obs.usd_per_gpu_hour
+        if price <= 0:
+            continue
+        key = (obs.source, contract.index_code, obs.commitment.value, obs.gpu_count)
+        bucket = groups.setdefault(key, {})
+        form = obs.form_factor.value
+        if form not in bucket or price < bucket[form]:
+            bucket[form] = price
+
+    collected: dict[tuple[str, str], list[float]] = {}
+    for (source, index_code, _commitment, _n), prices in groups.items():
+        pcie, sxm = prices.get("pcie"), prices.get("sxm")
+        if pcie and sxm and sxm > 0:
+            collected.setdefault((source, index_code), []).append(pcie / sxm)
+
+    evidence = []
+    for (source, index_code), ratios in sorted(collected.items()):
+        evidence.append(
+            FormFactorEvidence(
+                source=source,
+                index_code=index_code,
+                pairs=len(ratios),
+                median_ratio=statistics.median(ratios),
+                ratios=sorted(ratios),
+            )
+        )
+    return evidence
+
+
+def form_factor_summary(evidence: list[FormFactorEvidence]) -> dict:
+    """Pool the per-venue medians into one estimate, honestly denominated.
+
+    The pooling is over *venues* rather than over pairs. Six ratios from one
+    venue are one venue's opinion, not six observations -- the same reason the
+    estimator collapses a provider's SKUs to a single median before weighting.
+    """
+    from .models import FormFactor
+    from .spec import FORM_FACTOR_FACTORS
+
+    if not evidence:
+        return {"venues": 0, "pairs": 0, "observed": None, "asserted": None, "error": None}
+
+    per_venue: dict[str, list[float]] = {}
+    for item in evidence:
+        per_venue.setdefault(item.source, []).append(item.median_ratio)
+
+    venue_medians = [statistics.median(v) for v in per_venue.values()]
+    pooled = statistics.median(venue_medians)
+    asserted = FORM_FACTOR_FACTORS[FormFactor.PCIE]
+    implied = 1.0 / pooled if pooled > 0 else float("inf")
+
+    return {
+        "venues": len(per_venue),
+        "pairs": sum(i.pairs for i in evidence),
+        "observed_ratio": pooled,
+        "implied_factor": implied,
+        "asserted": asserted,
+        "error": (implied - asserted) / asserted,
+        "spread": (min(venue_medians), max(venue_medians)),
+    }
