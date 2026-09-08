@@ -320,11 +320,26 @@ pre.sample b { color: var(--screened); font-weight: 600; }
 /* Only the top. A padding shorthand here would land on the same element as
    .wrap and silently zero its side padding, pushing the page to both edges. */
 .dash { padding-top: 34px; }
-.dash-head { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 26px; }
+.dash-head { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 14px; }
 .dash-head h1 { font-size: 27px; margin: 0; }
 .dash-head p { margin: 4px 0 0; font-size: 15px; color: var(--muted); font-family: var(--ui); }
 
-.picker { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+/* The index selector follows you down the page: on a call you jump between
+   indices constantly, and scrolling back to a header to do it is friction the
+   person watching also has to sit through. Sticky under the topbar, which owns
+   z-index 40, so this sits just below at 30. */
+.pickerbar {
+  /* 49px tucks the bar a few pixels *under* the 53px topbar rather than
+     guessing its height exactly. The topbar owns z-index 40 and paints over
+     the overlap, so no sliver of scrolling content can appear between them
+     if a font renders a pixel taller on someone else's machine. */
+  position: sticky; top: 49px; z-index: 30;
+  margin: 0 -26px 20px; padding: 10px 26px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--rule);
+}
+.picker { display: flex; flex-wrap: wrap; gap: 8px; }
 .picker button {
   font-family: var(--mono); font-size: 12.5px; font-weight: 500;
   background: var(--surface); color: var(--ink-2);
@@ -405,7 +420,8 @@ tr.screened .code { text-decoration: line-through; color: var(--muted); }
   .topbar { padding: 0 18px; }
   .hero { padding: 44px 0 30px; }
   th, td { padding-left: 14px; padding-right: 14px; }
-  .picker { margin-left: 0; width: 100%; }
+  .pickerbar { margin: 0 -18px 16px; padding: 9px 18px; }
+  .picker { width: 100%; }
 }
 
 /* ---------- as-of ---------- */
