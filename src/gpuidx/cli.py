@@ -1346,6 +1346,53 @@ def weights_cmd(
             "                  is exactly when one provider could otherwise set the print.[/]"
         )
 
+    # -- independence -------------------------------------------------------
+    # The cap limits how much any one provider can matter. It says nothing
+    # about how many of those providers reached us the same way, which is the
+    # other concentration risk and the one no gate is watching.
+    from .estimator import VENUE_CONCENTRATION_FLAG, venue_breakdown
+
+    breakdown = venue_breakdown(est.providers)
+    top_venue, top_count = next(iter(breakdown.items()))
+    top_share = top_count / count
+
+    console.print()
+    console.print("  [bold]how independent is this?[/]")
+    console.print(
+        f"    {count} providers, but they arrived by only "
+        f"[bold]{len(breakdown)}[/] venues"
+    )
+
+    venues = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    venues.add_column("venue", no_wrap=True)
+    venues.add_column("providers", justify="right")
+    venues.add_column("share", justify="right")
+    for venue, n in breakdown.items():
+        share = n / count
+        hot = share > VENUE_CONCENTRATION_FLAG
+        venues.add_row(
+            f"[yellow]{venue}[/]" if hot else venue,
+            str(n),
+            f"[yellow]{share:.0%}[/]" if hot else f"{share:.0%}",
+        )
+    console.print(venues)
+
+    if top_share > VENUE_CONCENTRATION_FLAG:
+        console.print(
+            f"    [yellow]{top_venue} supplies {top_share:.0%} of the contributing providers.[/]"
+        )
+        console.print("    [dim]min_providers counts companies, not routes, so a fixing drawing[/]")
+        console.print("    [dim]most of its providers through one feed reads as broad right up[/]")
+        console.print("    [dim]until that feed breaks -- at which point coverage collapses for a[/]")
+        console.print("    [dim]reason no gate was watching for.[/]")
+        console.print("    [dim]Flagged, never gated: a ceiling chosen to clear today's data[/]")
+        console.print("    [dim]would be fitted to the sample.[/]")
+    else:
+        console.print(
+            f"    [dim]largest venue supplies {top_share:.0%}, under the "
+            f"{VENUE_CONCENTRATION_FLAG:.0%} flag threshold.[/]"
+        )
+
     weighted = sum(a.price * a.weight for a in live) / total
     console.print("\n  [bold]the value[/]")
     published = f"   [dim]published {est.value:.4f}[/]" if est.value is not None else ""

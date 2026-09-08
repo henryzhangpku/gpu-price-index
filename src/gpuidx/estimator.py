@@ -90,6 +90,15 @@ class Estimate:
         return [p for p in self.providers if not p.screened_out]
 
     @property
+    def venue_count(self) -> int:
+        """Independent routes the contributing providers arrived by.
+
+        Never equal to, and often far below, the provider count. This is the
+        number that says how many things have to break before coverage does.
+        """
+        return len(venue_breakdown(self.providers))
+
+    @property
     def passed(self) -> bool:
         return all(g.passed for g in self.gates) and self.value is not None
 
@@ -274,6 +283,77 @@ def robust_dispersion(aggregates: list[ProviderAggregate]) -> float | None:
     return (mad * MAD_TO_SIGMA) / median
 
 
+#: A provider count answers "how many companies?". It does not answer "how many
+#: independent ways did this data reach me?", and those diverge sharply here:
+#: one aggregator resells roughly twenty clouds, so a single feed can supply
+#: most of a fixing's providers while the provider count looks healthy.
+#:
+#: Flagged above this share of contributing providers, never gated. Today a
+#: single venue supplies two thirds of them, so gating would withhold every
+#: index -- and choosing a ceiling that today's data happens to clear would be
+#: fitting the rule to the sample. Disclose first, gate once there is evidence
+#: for a number.
+VENUE_CONCENTRATION_FLAG = 0.50
+
+
+def venue_of(source: str) -> str:
+    """The route a quote arrived by, as distinct from who sold the capacity.
+
+    Sources are written ``venue:provider`` where the two differ -- so
+    ``shadeform:lambdalabs`` is Lambda Labs capacity reached through the
+    Shadeform feed, and the provider is what a buyer transacts with while the
+    venue is what fails when a scraper breaks. A bare ``runpod`` is both.
+
+    ``curated:aws`` stretches the convention: ``curated`` is a collection
+    method, not a marketplace. For this purpose that is the right answer
+    anyway, because every curated input shares one hand-maintained file and
+    therefore one failure mode.
+    """
+    return source.split(":", 1)[0] if ":" in source else source
+
+
+def venue_breakdown(aggregates: list[ProviderAggregate]) -> dict[str, int]:
+    """Contributing providers per venue, largest first."""
+    counts: dict[str, int] = {}
+    for agg in aggregates:
+        if agg.screened_out:
+            continue
+        venue = venue_of(agg.provider)
+        counts[venue] = counts.get(venue, 0) + 1
+    return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+def venue_concentration_flags(aggregates: list[ProviderAggregate]) -> list[QualityFlag]:
+    """Warn when the provider count overstates how independent the sample is.
+
+    This is the failure the publication gates cannot see. ``min_providers``
+    counts companies, so a fixing drawing eleven of twelve providers through
+    one feed reads as broad right up until that feed breaks, at which point
+    coverage collapses for a reason no gate was watching for.
+    """
+    breakdown = venue_breakdown(aggregates)
+    total = sum(breakdown.values())
+    if total == 0:
+        return []
+
+    venue, count = next(iter(breakdown.items()))
+    share = count / total
+    if share <= VENUE_CONCENTRATION_FLAG:
+        return []
+
+    return [
+        QualityFlag(
+            severity="warn",
+            code="venue_concentration",
+            detail=(
+                f"{venue} supplies {count} of {total} contributing providers "
+                f"({share:.0%}); {len(breakdown)} independent venues in total, "
+                "so the provider count overstates independence"
+            ),
+        )
+    ]
+
+
 def estimate(
     index_code: str,
     quotes: list[NormalizedQuote],
@@ -283,6 +363,7 @@ def estimate(
     aggregates = aggregate_by_provider(quotes)
     flags = screen_outliers(aggregates)
     flags += assign_weights(aggregates, gates)
+    flags += venue_concentration_flags(aggregates)
 
     contributing = [a for a in aggregates if not a.screened_out]
     dispersion = robust_dispersion(contributing)
