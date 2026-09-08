@@ -1376,11 +1376,34 @@ def weights_cmd(
             "                  is exactly when one provider could otherwise set the print.[/]"
         )
 
+    # A ceiling is abstract until you say how far today sits from it. The
+    # question a reader actually has is not "did it bind" but "what would have
+    # to happen before it did", and that is one division.
+    top_w = max(a.weight for a in live)
+    binds_below = top_w / cap
+    rest = total - top_w
+    rest_needed = binds_below - top_w
+
+    console.print(
+        f"    the maths     binds when {top_w:.2f} / sum w > {cap:.0%}, "
+        f"that is sum w < {binds_below:.2f}"
+    )
+    console.print(f"    today         sum w = {total:.2f}")
+    if rest > rest_needed > 0:
+        console.print(
+            f"                  [dim]the rest carries {rest:.2f}, and must fall "
+            f"below {rest_needed:.2f}[/]"
+        )
+        console.print(
+            f"                  [dim]-- about {1 - rest_needed / rest:.0%} of it gone -- "
+            "before one weight moves[/]"
+        )
+
     # -- independence -------------------------------------------------------
     # The cap limits how much any one provider can matter. It says nothing
     # about how many of those providers reached us the same way, which is the
     # other concentration risk and the one no gate is watching.
-    from .estimator import VENUE_CONCENTRATION_FLAG, venue_breakdown
+    from .estimator import VENUE_CONCENTRATION_FLAG, venue_breakdown, venue_of
 
     breakdown = venue_breakdown(est.providers)
     top_venue, top_count = next(iter(breakdown.items()))
@@ -1421,6 +1444,45 @@ def weights_cmd(
         console.print(
             f"    [dim]largest venue supplies {top_share:.0%}, under the "
             f"{VENUE_CONCENTRATION_FLAG:.0%} flag threshold.[/]"
+        )
+
+    # Prose about correlated failure is easy to nod along to. The number is
+    # what makes it land: say what the panel would actually be if the dominant
+    # feed went away, and whether the gates would notice.
+    survivors = [a for a in live if venue_of(a.provider) != top_venue]
+    obs_now = sum(a.quote_count for a in live)
+    obs_left = sum(a.quote_count for a in survivors)
+
+    console.print(
+        f"    the maths     flagged above {VENUE_CONCENTRATION_FLAG:.0%}; {top_venue} is at "
+        f"{top_share:.0%}, {top_share - VENUE_CONCENTRATION_FLAG:.0%} over"
+    )
+    console.print(
+        f"    if it failed  {count} providers -> [bold]{len(survivors)}[/], "
+        f"{obs_now} observations -> [bold]{obs_left}[/]"
+    )
+    prov_ok = len(survivors) >= DEFAULT_GATES.min_providers
+    obs_ok = obs_left >= DEFAULT_GATES.min_observations
+    if prov_ok and obs_ok:
+        console.print(
+            f"                  [yellow]min_providers {DEFAULT_GATES.min_providers}, "
+            f"min_observations {DEFAULT_GATES.min_observations}: both still met[/]"
+        )
+        console.print(
+            "                  [dim]It would publish on the remnant, and no gate[/]"
+        )
+        console.print(
+            "                  [dim]would record that the market stopped being seen[/]"
+        )
+    else:
+        failed = []
+        if not prov_ok:
+            failed.append(f"min_providers ({len(survivors)} of {DEFAULT_GATES.min_providers})")
+        if not obs_ok:
+            failed.append(f"min_observations ({obs_left} of {DEFAULT_GATES.min_observations})")
+        console.print(f"                  [dim]{' and '.join(failed)} would fail[/]")
+        console.print(
+            "                  [dim]-- so it withholds, but for the count, not the cause[/]"
         )
 
     weighted = sum(a.price * a.weight for a in live) / total
