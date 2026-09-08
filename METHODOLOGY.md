@@ -365,12 +365,33 @@ marketing document.
    a different administrator could justify a separate hyperscaler benchmark
    instead. See [docs/FINDINGS.md](docs/FINDINGS.md) section 1.
 
-3. **Most adjustment factors remain unvalidated.** Section 4 tests the two
-   that can be tested: the community factor survives at +1.2% against 41
-   observed pairs, and the spot factor turns out to be uncalibratable from
-   public data because the only venue quoting both tiers administers the
-   spread rather than pricing it. The form-factor, interconnect, and node-size
-   factors have no observable check at all and remain pure judgement.
+3. **Most adjustment factors remain unvalidated, and one claim here was
+   simply wrong.** The commitment factors can be checked where a venue quotes
+   the same box under two commitment types: the community factor survives, and
+   the spot factor turns out to be uncalibratable from public data because the
+   only venue quoting both tiers administers the spread rather than pricing it.
+
+   **This document previously said the form-factor factor had "no observable
+   check at all". That was false, and false only because nobody looked.** The
+   identical argument applies: where one venue quotes the same GPU as PCIe and
+   as SXM, at the same commitment and node size, the ratio is a direct
+   observation of what that venue charges for the difference. `gpuidx
+   calibrate` now measures it. Pooled over venues rather than over pairs — six
+   ratios from one venue are one venue's opinion — the observed ratio implies a
+   factor near **1.08 against the asserted 1.18** (21 pairs over 6 venues,
+   collected 2026-09-07), so the schedule looks
+   roughly 8% too aggressive on the factor that touches the largest share of
+   inputs.
+
+   That is reported and not enforced. The sample is small, the per-venue
+   medians span 0.78 to 1.25, at least one venue quotes a price that cannot be
+   real, and changing a factor would break the reproduction of every historical
+   value. The finding worth recording is not the number; it is that a claim of
+   unmeasurability survived in this document until someone ran the measurement.
+
+   The **interconnect and node-size factors** genuinely have no observable
+   check and remain pure judgement — though that sentence should now be read
+   with suspicion, given the last one.
 
 4. **Sample instability.** Two collections three minutes apart produced an
    identical `GIX-H100` value but moved `GIX-A100` by 8% (from $2.014 to
