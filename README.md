@@ -105,6 +105,7 @@ uv run gpuidx contracts                    # benchmark definitions and gates
 uv run gpuidx publish                      # run one collection + fixing cycle
 uv run gpuidx show GIX-H100                # the series
 uv run gpuidx explain GIX-H100 2026-08-27  # the whole derivation, end to end
+uv run gpuidx dispersion GIX-H100          # the gate arithmetic, worked step by step
 uv run gpuidx audit GIX-H100 2026-08-27    # every provider behind one value
 uv run gpuidx revisions GIX-H100 2026-08-27
 uv run gpuidx as-of GIX-H100 2026-08-27 2026-08-27T20:15:00Z
