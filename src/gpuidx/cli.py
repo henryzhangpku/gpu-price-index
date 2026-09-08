@@ -650,6 +650,92 @@ def sensitivity_cmd(
             console.print(f"  {name:14} {share:.0%}")
 
 
+@app.command("dispersion")
+def dispersion_cmd(
+    index_code: str = typer.Argument(...),
+    index_date: str | None = typer.Argument(None, help="Defaults to the latest fixing"),
+) -> None:
+    """Show the dispersion arithmetic for one fixing, step by step.
+
+    The dispersion gate is the one that most often decides whether a value
+    prints, and it is the number people ask to see worked. Reconstructing it by
+    hand invites arithmetic mistakes in front of the person asking, so it is a
+    command.
+    """
+    import statistics
+
+    from .archive import read_tape
+    from .estimator import MAD_TO_SIGMA
+
+    if index_date is None:
+        dates = [r["index_date"] for r in read_tape(ARCHIVE_ROOT)]
+        if not dates:
+            console.print("[yellow]no fixings on the tape[/]")
+            raise typer.Exit(1)
+        index_date = max(dates)
+
+    est, detail = estimate_from_archive(ARCHIVE_ROOT, index_code, index_date)
+    if est is None:
+        console.print(f"[yellow]{detail}[/]")
+        raise typer.Exit(1)
+
+    prices = sorted(p.price for p in est.contributing)
+    if len(prices) < 3:
+        console.print(
+            f"[yellow]{len(prices)} contributing providers — dispersion is not "
+            "computable below three, and is reported as undefined rather than guessed[/]"
+        )
+        raise typer.Exit(1)
+
+    median = statistics.median(prices)
+    deviations = sorted(abs(p - median) for p in prices)
+    mad = statistics.median(deviations)
+    sigma = mad * MAD_TO_SIGMA
+    dispersion = sigma / median
+    ceiling = DEFAULT_GATES.max_dispersion
+    passed = dispersion <= ceiling
+
+    console.print(
+        Panel(
+            f"[bold]{index_code}[/]  ·  {index_date}\n"
+            f"[dim]{len(prices)} contributing providers, after screening[/]",
+            border_style="cyan" if passed else "yellow",
+            expand=False,
+        )
+    )
+
+    console.print("\n[bold]provider medians, sorted[/]")
+    console.print("  " + "  ".join(f"{p:.3f}" for p in prices))
+
+    console.print("\n[bold]deviations from the median, sorted[/]")
+    console.print("  " + "  ".join(f"{d:.3f}" for d in deviations))
+
+    steps = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False, show_header=False)
+    steps.add_column("step", no_wrap=True)
+    steps.add_column("value", justify="right", no_wrap=True)
+    steps.add_column("note", style="dim")
+    steps.add_row("median of prices", f"{median:.4f}", "the centre, robustly")
+    steps.add_row("MAD = median of deviations", f"{mad:.4f}", "typical distance from the centre")
+    steps.add_row(f"x {MAD_TO_SIGMA}", f"{sigma:.4f}", "consistency constant, 1 / inverse-normal(0.75)")
+    steps.add_row("/ median", f"[bold]{dispersion:.4f}[/]", "scale-free, so one ceiling fits every index")
+    console.print()
+    console.print(steps)
+
+    verdict = (
+        f"[bold green]PASS[/]  {dispersion:.3f} is within the {ceiling} ceiling"
+        if passed
+        else f"[bold red]FAIL[/]  {dispersion:.3f} exceeds the {ceiling} ceiling"
+    )
+    console.print(f"  {verdict}")
+    if not passed:
+        console.print(
+            f"  [dim]prices span {prices[0]:.3f} to {prices[-1]:.3f}, a "
+            f"{prices[-1] / prices[0]:.1f}x range — this is not one market, and a "
+            "central estimate would misrepresent both ends[/]"
+        )
+    console.print()
+
+
 @app.command("explain")
 def explain_cmd(
     index_code: str = typer.Argument(...),
