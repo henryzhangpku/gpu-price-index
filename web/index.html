@@ -206,9 +206,22 @@ sigma test undefined -> screen returns
       <div class="card">
         <span class="label">Most adjustment factors are judgement</span>
         <p>
-          Two can be tested against observed pairs: the community factor survives at
-          +1.2% over 41 pairs, and the spot factor turns out to be uncalibratable from
-          public data. The rest have no observable check at all.
+          Where one venue sells the same box two ways, the ratio between the prices is
+          a direct observation of what it charges for the difference. The community
+          factor survives that test at +1.2% over 41 pairs. The spot factor turns out
+          to be uncalibratable from public data, because the only venue quoting both
+          tiers applies an identical ratio to every SKU &mdash; a discount policy, not
+          a market spread.
+        </p>
+        <p>
+          This card used to end &ldquo;the rest have no observable check at all.&rdquo;
+          That was false, and false only because nobody looked. The same test applies
+          to form factor wherever a venue quotes one GPU as both PCIe and SXM: 21 pairs
+          across 6 venues imply <strong>1.085 against an asserted 1.18</strong>, so the
+          schedule is roughly 8% too aggressive on the factor touching the largest share
+          of inputs. Reported, not enforced &mdash; moving a factor would break the
+          reproduction of every historical value. Interconnect and node size still have
+          no check, and that sentence should now be read with suspicion.
         </p>
       </div>
       <div class="card">
