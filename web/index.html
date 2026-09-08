@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GPU Rental Price Benchmark</title>
-<meta name="description" content="A daily GPU rental price index built from live public pricing across ~20 clouds, with the governance a settlement-grade benchmark requires: a waterfall, robust estimation, publication gates, and a bitemporal audit trail.">
+<meta name="description" content="Every provider behind every fixing: weights, outlier screens, publication gates, and the adjustment applied to each contributing quote.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
@@ -19,252 +19,62 @@
 <div class="topbar">
   <a class="brand" href="index.html">gpu<span>idx</span></a>
   <nav>
-    <a href="index.html" aria-current="page">Method</a>
-    <a href="dashboard.html">Dashboard</a>
+    <a href="index.html" aria-current="page">Dashboard</a>
+    <a href="method.html">Method</a>
     <a href="https://github.com/henryzhangpku/gpu-price-index">Source</a>
     <button class="theme-toggle" type="button">Dark</button>
   </nav>
 </div>
 
-<div class="wrap">
+<div class="wrap dash">
 
-  <header class="hero">
-    <span class="kicker">GPU rental price benchmark &middot; reference implementation</span>
-    <h1>Anyone can average prices. A benchmark decides when not to print.</h1>
-    <p class="standfirst">
-      A daily index over GPU rental pricing from roughly twenty clouds, built to the
-      standard a cash-settled contract would demand: reproducible years later,
-      defensible to a counterparty who lost money on it, and resistant to a
-      participant who wants the number somewhere else.
-    </p>
-  </header>
-
-  <div class="board" id="board">
-    <div class="board-head">
-      <h2>Daily fixing</h2>
-      <span class="meta" id="board-meta">loading&hellip;</span>
+  <div class="dash-head">
+    <div>
+      <h1>Fixing detail</h1>
+      <p id="dash-sub">loading&hellip;</p>
     </div>
+  </div>
+
+  <div class="pickerbar">
+    <div class="picker" id="picker"></div>
+  </div>
+
+  <div class="panel">
+    <header>
+      <h2>Daily fixing</h2>
+      <span class="note" id="board-meta"></span>
+    </header>
     <div id="board-table"><div class="loading">reading the tape&hellip;</div></div>
   </div>
 
-  <p style="font-size:14.5px;color:var(--muted);font-family:var(--ui);margin:14px 2px 0;">
-    A struck-through value is what the estimator produced and the gates refused to publish.
-    <a href="dashboard.html">Open the dashboard</a> to see every provider behind a number.
-  </p>
-
-  <div class="stat-row" id="stats" style="margin-top:34px;"></div>
-
-  <!-- 1 -->
-  <section class="band">
-    <div class="section-head"><h2>An H100-hour is not one good</h2><span class="tag">the contract</span></div>
-    <div class="prose">
-      <p>
-        A PCIe card on Ethernet in a spare-capacity marketplace and an SXM card on an
-        NVLink fabric under a datacentre SLA differ in price by a factor of three, and
-        they are not substitutes for the buyer. An index over a heterogeneous good is
-        meaningless without a standard unit.
+  <div class="panel" id="asof-panel" hidden>
+    <header>
+      <h2>As of</h2>
+      <span class="note" id="asof-note"></span>
+    </header>
+    <div class="body">
+      <p class="asof-help">
+        The store is bitemporal: every value carries when it was true in the market
+        and when this system first knew it. Move the control to read the tape as it
+        stood at an earlier moment. Nothing is overwritten, so the earlier answer is
+        still there.
       </p>
-      <p>
-        So every index defines exactly one good, and every input is restated as that
-        good or discarded &mdash; the same pattern as a Platts standard cargo or a Baltic
-        route. The standard good is the benchmark; everything else is a spread to it.
-      </p>
+      <div class="asof-row">
+        <input type="range" id="asof" min="0" max="0" value="0" step="1"
+               aria-label="Knowledge time">
+        <button type="button" id="asof-now">now</button>
+      </div>
+      <div class="asof-state" id="asof-label"></div>
     </div>
-    <div class="card" style="margin-top:22px;max-width:none;">
-      <span class="label">Benchmark-equivalent contract &middot; <span id="contract-code">GIX-H100</span></span>
-      <p class="mono" style="font-size:14px;color:var(--ink);" id="contract-text">&hellip;</p>
-    </div>
-  </section>
+  </div>
 
-  <!-- 2 -->
-  <section class="band">
-    <div class="section-head"><h2>Rank inputs by what they prove</h2><span class="tag">the waterfall</span></div>
-    <div class="prose">
-      <p>
-        Benchmark administration has a standard answer to inputs of unequal quality:
-        prefer transactions to quotes, and quotes to judgement. A value resting only on
-        rate cards is published with a flag, because &ldquo;what vendors say they would
-        charge&rdquo; is not the same claim as &ldquo;capacity traded here.&rdquo;
-      </p>
-    </div>
-    <div class="tiers" id="tiers" style="margin-top:22px;"></div>
-  </section>
-
-  <!-- 3 -->
-  <section class="band">
-    <div class="section-head"><h2>What would someone who wanted to move the price do?</h2><span class="tag">the estimator</span></div>
-    <div class="prose">
-      <p>
-        The estimator is built around that question rather than around statistical
-        elegance. Each defence below answers one specific attack.
-      </p>
-    </div>
-    <div class="cards" style="margin-top:22px;">
-      <div class="card">
-        <span class="label">Flood the venue with SKUs</span>
-        <p>Collapse to a per-provider median first. A venue publishing forty variants of one box gets one vote, not forty.</p>
-      </div>
-      <div class="card">
-        <span class="label">Post one absurd offer</span>
-        <p>Screen on median absolute deviation, which has a 50% breakdown point, rather than standard deviation, which does not.</p>
-      </div>
-      <div class="card">
-        <span class="label">Dominate a thin index</span>
-        <p>Cap any single provider at 35% of total weight, applied iteratively, and refuse to publish below a provider floor.</p>
-      </div>
-      <div class="card">
-        <span class="label">Wait for a quiet day</span>
-        <p>Gates are evaluated every day. A thin day withholds rather than printing a number nobody could defend.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- 4 -->
-  <section class="band">
-    <div class="section-head"><h2>$200,002</h2><span class="tag">where the robust statistic broke</span></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:26px;align-items:start;">
-      <div class="prose">
-        <p>
-          MAD is used precisely because you cannot defeat it with the outlier it exists
-          to catch. Fed deliberately hostile inputs, it stopped working entirely.
-        </p>
-        <p>
-          The trap is that the failure requires <em>agreement</em>. As long as honest
-          providers differ even slightly, MAD is positive and the screen works &mdash; which
-          is why a test suite built on realistic-looking prices passed happily. It only
-          breaks when the market agrees exactly, which is also the moment one extreme
-          quote does the most damage.
-        </p>
-        <p>
-          The fix falls back to a symmetric ratio band. A percentage test would have been
-          wrong twice over: it flags a provider 50% below consensus, which is ordinary
-          market structure, and it caps at 100% on the downside, so it could never catch
-          one cent against a three-dollar consensus.
-        </p>
-      </div>
-      <div>
-        <pre class="sample">four providers at $3.00, one at $1,000,000
-
-median = $3.00
-MAD    = median(0, 0, 0, 0, 999997) = 0
-
-sigma test undefined -> screen returns
-<b>published value: $200,002</b></pre>
-        <p style="font-size:14.5px;color:var(--muted);font-family:var(--ui);margin:14px 2px 0;">
-          Now covered by property-based tests that generate markets rather than choose
-          them, asserting ten invariants that must hold for any market at all.
-        </p>
-      </div>
-    </div>
-  </section>
-
-  <!-- 5 -->
-  <section class="band">
-    <div class="section-head"><h2>Withholding is a first-class outcome</h2><span class="tag">the gates</span></div>
-    <div class="prose">
-      <p>
-        A gap in the series is a fact about the market; an interpolated value is a
-        fiction about it. Carrying yesterday's number forward on a thin day is exactly
-        the behaviour that makes a benchmark manipulable &mdash; it converts &ldquo;nobody
-        traded&rdquo; into &ldquo;the price was unchanged,&rdquo; and it rewards whoever
-        stayed quiet.
-      </p>
-    </div>
-    <div class="cards" id="gates-cards" style="margin-top:22px;"></div>
-    <p class="pull" style="margin-top:34px;">
-      An index that printed a number for a GPU only one venue quotes would be reporting
-      one vendor's rate card dressed up as a market.
-    </p>
-  </section>
-
-  <!-- 6 -->
-  <section class="band">
-    <div class="section-head"><h2>What this cannot do</h2><span class="tag">stated plainly</span></div>
-    <div class="prose">
-      <p>
-        A methodology document that only lists strengths is a marketing document. These
-        are the limits that matter most, and the full list runs to ten.
-      </p>
-    </div>
-    <div class="cards" style="margin-top:22px;">
-      <div class="card">
-        <span class="label">No transaction data</span>
-        <p>
-          Every input is an offer or a rate card. Nobody here observes a completed rental
-          at a price. That is the largest gap between this and a benchmark that could
-          responsibly settle a contract, and no estimator sophistication closes it.
-        </p>
-      </div>
-      <div class="card">
-        <span class="label">It measures the neocloud tail</span>
-        <p>
-          The economically dominant volume is private multi-year bilateral capacity that
-          never appears on a rate card and prices differently. Anything settling against
-          this carries that basis risk.
-        </p>
-      </div>
-      <div class="card">
-        <span class="label">Most adjustment factors are judgement</span>
-        <p>
-          Where one venue sells the same box two ways, the ratio between the prices is
-          a direct observation of what it charges for the difference. The community
-          factor survives that test at +1.2% over 41 pairs. The spot factor turns out
-          to be uncalibratable from public data, because the only venue quoting both
-          tiers applies an identical ratio to every SKU &mdash; a discount policy, not
-          a market spread.
-        </p>
-        <p>
-          This card used to end &ldquo;the rest have no observable check at all.&rdquo;
-          That was false, and false only because nobody looked. The same test applies
-          to form factor wherever a venue quotes one GPU as both PCIe and SXM: 21 pairs
-          across 6 venues imply <strong>1.085 against an asserted 1.18</strong>, so the
-          schedule is roughly 8% too aggressive on the factor touching the largest share
-          of inputs. Reported, not enforced &mdash; moving a factor would break the
-          reproduction of every historical value. Interconnect and node size still have
-          no check, and that sentence should now be read with suspicion.
-        </p>
-      </div>
-      <div class="card">
-        <span class="label">The dispersion gate is twitchy</span>
-        <p>
-          Two runs an hour apart on an unmoved market produced dispersion of 0.560 and
-          0.365 &mdash; withheld, then published. The gate is correct in intent and too
-          coarse at these provider counts. Recorded as an open defect rather than patched
-          with a guessed constant.
-        </p>
-      </div>
-    </div>
-  </section>
-
-  <section class="band">
-    <div class="cards">
-      <div class="card">
-        <span class="label">See the machinery</span>
-        <p>Every provider behind every number, with weights, screens, and the gate results that published or withheld it.</p>
-        <p><a href="dashboard.html">Open the dashboard &rarr;</a></p>
-      </div>
-      <div class="card">
-        <span class="label">Read the method</span>
-        <p>The full methodology, including the section on everything it gets wrong.</p>
-        <p><a href="https://github.com/henryzhangpku/gpu-price-index/blob/main/METHODOLOGY.md">METHODOLOGY.md &rarr;</a></p>
-      </div>
-      <div class="card">
-        <span class="label">Check the findings</span>
-        <p>What running it against live pricing actually turned up &mdash; including a forward curve that cannot be derived.</p>
-        <p><a href="https://github.com/henryzhangpku/gpu-price-index/blob/main/docs/FINDINGS.md">FINDINGS.md &rarr;</a></p>
-      </div>
-    </div>
-  </section>
+  <div id="detail"></div>
 
   <footer class="site">
-    <p style="margin:0 0 6px;">
-      Methodology <span class="mono" id="foot-version">--</span> &middot;
-      series <span class="mono" id="foot-range">--</span> &middot;
-      every value reproducible from its own archived inputs with <code>gpuidx verify</code>.
-    </p>
     <p style="margin:0;">
-      A study of what it takes to turn heterogeneous compute pricing into a number
-      something could settle against. It is a demonstration, not a benchmark.
+      Everything here is derived from the archived snapshots and the append-only tape by
+      <code>gpuidx export-web</code>, and recomputed through the same path
+      <code>gpuidx verify</code> uses. The page never computes a price.
     </p>
   </footer>
 
@@ -272,83 +82,438 @@ sigma test undefined -> screen returns
 
 <script type="module">
 import {
-  loadBundle, showError, initTheme, renderBoard,
-  fmtUsd, fmtPct, longDate, escapeHtml
+  loadBundle, showError, initTheme, renderBoard, wireBoard,
+  fmtUsd, fmtPct, fmtNum, fmtSigned, shortDate, longDate, escapeHtml
 } from "./app.js";
 
 initTheme();
 
 const boardTable = document.getElementById("board-table");
+const detail = document.getElementById("detail");
+
+/* ---------- series chart ----------
+ * The line breaks on a withheld day rather than bridging it. A bridged gap
+ * would draw a price that was never published, which is the visual form of
+ * exactly the behaviour the gates exist to prevent.
+ */
+function chart(entries) {
+  const W = 900, H = 300;
+  // Extra bottom room: withheld days live in a status strip under the axis
+  // rather than as full-height lines through the plot. Drawn inside the plot
+  // they read as a data series, and the marker sits where a price would be.
+  const pad = { t: 18, r: 18, b: 74, l: 56 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const stripY = H - 46, stripH = 9;
+
+  const values = entries.filter((e) => e.value !== null).map((e) => e.value);
+  if (!values.length) {
+    return `<div class="empty">No published value in this series yet — every day was withheld.</div>`;
+  }
+
+  let lo = Math.min(...values), hi = Math.max(...values);
+  if (hi === lo) { lo -= lo * 0.05 || 0.5; hi += hi * 0.05 || 0.5; }
+  const span = hi - lo;
+  lo -= span * 0.18; hi += span * 0.18;
+
+  const n = entries.length;
+  const x = (i) => pad.l + (n === 1 ? iw / 2 : (i * iw) / (n - 1));
+  const y = (v) => pad.t + ih - ((v - lo) / (hi - lo)) * ih;
+
+  const ticks = 4;
+  let grid = "";
+  for (let i = 0; i <= ticks; i++) {
+    const v = lo + ((hi - lo) * i) / ticks;
+    const yy = y(v);
+    grid += `<line class="grid" x1="${pad.l}" y1="${yy}" x2="${W - pad.r}" y2="${yy}"></line>`;
+    grid += `<text class="axis" x="${pad.l - 9}" y="${yy + 3.5}" text-anchor="end">${v.toFixed(2)}</text>`;
+  }
+
+  // Consecutive published days form a segment. A gap ends the segment rather
+  // than being bridged: a bridged line draws a price that was never published.
+  const segments = [];
+  let current = [];
+  entries.forEach((e, i) => {
+    if (e.value === null) {
+      if (current.length) segments.push(current);
+      current = [];
+    } else {
+      current.push([x(i), y(e.value)]);
+    }
+  });
+  if (current.length) segments.push(current);
+
+  // A lone published day between two withheld ones is a segment of one, and
+  // would otherwise render as an unexplained speck. Ring it so it reads as a
+  // deliberate mark.
+  const lines = segments.map((seg) =>
+    seg.length === 1
+      ? `<circle class="lone" cx="${seg[0][0]}" cy="${seg[0][1]}" r="7"></circle>`
+      : `<path class="line" d="M ${seg.map((p) => p.join(" ")).join(" L ")}"></path>`
+  ).join("");
+
+  const dots = entries.map((e, i) =>
+    e.value === null ? "" :
+    `<circle class="dot" cx="${x(i)}" cy="${y(e.value)}" r="3.5">
+       <title>${e.index_date}: ${fmtUsd(e.value)}</title>
+     </circle>`
+  ).join("");
+
+  // The status strip: one cell per day, so the run of withheld days is legible
+  // as a pattern without competing with the prices.
+  const cellW = Math.max(6, Math.min(22, (n > 1 ? iw / (n - 1) : iw) * 0.55));
+  const strip = entries.map((e, i) => {
+    // Clamp inside the plot so the first cell clears the "status" label and
+    // the last one clears the right edge.
+    const cx = Math.min(Math.max(x(i) - cellW / 2, pad.l), W - pad.r - cellW);
+    const published = e.value !== null;
+    const tip = published
+      ? `${e.index_date}: published at ${fmtUsd(e.value)}`
+      : `${e.index_date}: withheld — ${e.withheld_reason || "gated"}`;
+    return `<rect class="cell ${published ? "on" : "off"}" x="${cx}" y="${stripY}"
+                  width="${cellW}" height="${stripH}" rx="2"><title>${escapeHtml(tip)}</title></rect>`;
+  }).join("");
+
+  const step = Math.max(1, Math.ceil(n / 8));
+  const xlabels = entries.map((e, i) =>
+    i % step === 0 || i === n - 1
+      ? `<text class="axis" x="${x(i)}" y="${H - 12}" text-anchor="middle">${shortDate(e.index_date)}</text>`
+      : ""
+  ).join("");
+
+  const withheldCount = entries.filter((e) => e.value === null).length;
+
+  return `<div class="chart-wrap">
+      <svg class="chart" viewBox="0 0 ${W} ${H}" role="img"
+           aria-label="Published fixings over time. ${withheldCount} of ${n} days were withheld and print no value.">
+        ${grid}${lines}${dots}
+        <text class="axis" x="${pad.l - 9}" y="${stripY + stripH - 1}" text-anchor="end">status</text>
+        ${strip}${xlabels}
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i></i> published fixing</span>
+      <span><i class="ring"></i> published, with a withheld day either side</span>
+      <span><i class="off"></i> withheld — no value printed</span>
+    </div>`;
+}
+
+/* ---------- detail panels ---------- */
+
+function providersPanel(idx) {
+  const est = idx.estimate;
+  const live = est.providers.filter((p) => !p.screened_out);
+  const maxWeight = Math.max(...live.map((p) => p.weight), 0.0001);
+  const capped = new Set(
+    est.flags.filter((f) => f.code === "provider_weight_capped")
+      .map((f) => f.detail.split(" ")[0])
+  );
+
+  const rows = est.providers.map((p) => `
+    <tr class="${p.screened_out ? "screened" : ""}">
+      <td><span class="code">${escapeHtml(p.provider)}</span></td>
+      <td class="r num">${fmtUsd(p.price)}</td>
+      <td class="r num">${p.quote_count}</td>
+      <td><span class="tierpill" data-tier="${p.tier}">tier ${p.tier}</span></td>
+      <td>${p.screened_out ? "" : `<div class="bar ${capped.has(p.provider) ? "capped" : ""}">
+             <i style="width:${Math.max(3, (p.weight / maxWeight) * 100).toFixed(1)}%"></i></div>`}</td>
+      <td class="r num">${p.screened_out ? "--" : fmtPct(p.share, 1)}</td>
+      <td class="detail" style="font-family:var(--mono);font-size:12px;color:var(--muted)">
+        ${escapeHtml(p.screen_reason || (capped.has(p.provider) ? "weight capped" : ""))}
+      </td>
+    </tr>`).join("");
+
+  return `<div class="panel">
+    <header>
+      <h2>Contributions</h2>
+      <span class="note">${live.length} contributing · ${est.providers.length - live.length} screened</span>
+    </header>
+    <div class="scroll"><table>
+      <thead><tr>
+        <th>provider</th><th class="r">median</th><th class="r">quotes</th>
+        <th>tier</th><th>weight</th><th class="r">share</th><th>note</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function gatesPanel(idx) {
+  const est = idx.estimate;
+  const gates = est.gates.map((g) => `
+    <div class="gate ${g.passed ? "pass" : "fail"}">
+      <span class="mark">${g.passed ? "✓" : "✕"}</span>
+      <span>${escapeHtml(g.name.replace(/_/g, " "))}</span>
+      <span class="detail">${escapeHtml(g.detail)}</span>
+    </div>`).join("");
+
+  const verdict = idx.status === "published"
+    ? `<p style="margin:0 0 16px;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+         All gates cleared. Published at <span class="mono">${fmtUsd(idx.published_value)}</span>.</p>`
+    : `<p style="margin:0 0 16px;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+         The estimator produced <span class="mono">${fmtUsd(est.value)}</span> and it was
+         <strong style="color:var(--withheld)">not published</strong>. A gap is a fact about
+         the market; a number here would be a fiction about it.</p>`;
+
+  return `<div class="panel">
+    <header><h2>Publication gates</h2><span class="note">all must hold</span></header>
+    <div class="body">${verdict}<div class="gates">${gates}</div></div>
+  </div>`;
+}
+
+function exposurePanel(idx) {
+  const e = idx.exposure;
+  const factors = Object.entries(e.by_factor || {}).sort((a, b) => b[1] - a[1]);
+  const counterfactual = e.conforming_only === null
+    ? `<p style="margin:0;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+         There is <strong>no counterfactual</strong> for this index: too few venues sell the
+         benchmark configuration natively to clear the gates without adjusted inputs. It does
+         not merely lean on the adjustment schedule &mdash; it exists because of it.</p>`
+    : `<p style="margin:0;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+         Recomputed from natively conforming inputs alone:
+         <span class="mono">${fmtUsd(e.conforming_only)}</span>, a shift of
+         <span class="mono">${fmtSigned(e.shift)}</span>. The adjustments are making
+         heterogeneous supply comparable rather than manufacturing the answer.</p>`;
+
+  return `<div class="panel">
+    <header>
+      <h2>Dependence on the adjustment schedule</h2>
+      <span class="note">${e.conforming_quotes}/${e.total_quotes} inputs conformed as observed</span>
+    </header>
+    <div class="body">
+      ${counterfactual}
+      <div class="stat-row" style="margin-top:18px;">
+        <div class="stat"><div class="k">adjusted weight</div>
+          <div class="v">${fmtPct(e.weight_share_adjusted)}</div>
+          <div class="n">of contributing weight</div></div>
+        <div class="stat"><div class="k">conforming</div>
+          <div class="v">${e.conforming_quotes}/${e.total_quotes}</div>
+          <div class="n">inputs needing no restatement</div></div>
+        <div class="stat"><div class="k">publishable without</div>
+          <div class="v">${e.publishable_without_adjustment ? "yes" : "no"}</div>
+          <div class="n">would clear gates on conforming inputs alone</div></div>
+      </div>
+      ${factors.length ? `<p style="margin:18px 0 8px;font-family:var(--ui);font-size:12px;
+          letter-spacing:.13em;text-transform:uppercase;color:var(--muted)">share of inputs touched</p>
+        <div class="adjlist">${factors.map(([k, v]) =>
+          `<div><b>${escapeHtml(k.replace(/_/g, " "))}</b> — ${fmtPct(v)}</div>`).join("")}</div>` : ""}
+    </div>
+  </div>`;
+}
+
+function quotesPanel(idx) {
+  if (!idx.quotes.length) {
+    return `<div class="panel"><header><h2>Contributing quotes</h2></header>
+      <div class="empty">No quote matched this contract in the latest run.</div></div>`;
+  }
+  const rows = idx.quotes.map((q) => `
+    <tr>
+      <td><span class="code">${escapeHtml(q.source)}</span></td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${escapeHtml(q.source_sku)}</td>
+      <td class="r num">${fmtUsd(q.raw)}</td>
+      <td class="r num">${fmtUsd(q.normalized)}</td>
+      <td class="r num" style="color:${q.total_adjustment > 1.0001 ? "var(--withheld)" : "var(--muted)"}">
+        ${q.total_adjustment.toFixed(3)}×</td>
+      <td class="adjlist">${
+        q.adjustments.length
+          ? q.adjustments.map((a) => `<b>${escapeHtml(a.name.replace(/_/g, " "))}</b> ${a.factor.toFixed(2)}`).join(" · ")
+          : "<span style='color:var(--published)'>conforms as observed</span>"
+      }</td>
+    </tr>`).join("");
+
+  return `<div class="panel">
+    <header>
+      <h2>Contributing quotes</h2>
+      <span class="note">${idx.quotes.length} normalised inputs · every restatement recorded</span>
+    </header>
+    <div class="scroll"><table>
+      <thead><tr>
+        <th>source</th><th>sku</th><th class="r">as quoted</th>
+        <th class="r">restated</th><th class="r">factor</th><th>adjustments</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function revisionsPanel(entries) {
+  const corrected = entries.filter((e) => e.revision > 0 || e.superseded_at);
+  if (!corrected.length) return "";
+  const rows = corrected.map((e) => `
+    <tr>
+      <td class="num">${e.index_date}</td>
+      <td class="r num">rev ${e.revision}</td>
+      <td class="r num">${e.value === null ? "--" : fmtUsd(e.value)}</td>
+      <td>${e.superseded_at
+        ? `<span class="status withheld">superseded</span>`
+        : `<span class="status published">live</span>`}</td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">
+        ${escapeHtml(e.revision_reason || "")}</td>
+    </tr>`).join("");
+
+  return `<div class="panel">
+    <header>
+      <h2>Revisions</h2>
+      <span class="note">append-only · nothing is overwritten</span>
+    </header>
+    <div class="scroll"><table>
+      <thead><tr><th>date</th><th class="r">revision</th><th class="r">value</th>
+        <th>state</th><th>reason</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+/* ---------- bitemporal resolution ----------
+ * Mirrors Store.as_of exactly: for one event date, the value known at time T is
+ * the highest revision whose published_at is at or before T. A date with no such
+ * revision was not known yet, and is absent rather than blank -- the tape had
+ * nothing to say about it.
+ *
+ * ISO-8601 UTC strings compare lexically, so no date parsing is needed.
+ */
+function asOfSeries(revisions, knowledgeTime) {
+  const byDate = new Map();
+  for (const r of revisions) {
+    if (knowledgeTime !== null && r.published_at > knowledgeTime) continue;
+    const held = byDate.get(r.index_date);
+    if (!held || r.revision > held.revision) byDate.set(r.index_date, r);
+  }
+  return [...byDate.values()].sort((a, b) => (a.index_date < b.index_date ? -1 : 1));
+}
+
+/* ---------- wiring ---------- */
 
 try {
   const { meta, series, latest } = await loadBundle(["meta", "series", "latest"]);
-
-  /* fixing board */
-  const { html } = renderBoard(latest);
-  boardTable.innerHTML = html;
-  document.getElementById("board-meta").textContent =
-    `${longDate(latest.index_date)} · ${latest.run.raw_observations} raw observations → ${latest.run.normalized_quotes} normalised quotes`;
-
-  /* headline stats */
   const codes = Object.keys(latest.indices);
-  const published = codes.filter((c) => latest.indices[c].status === "published").length;
-  const providers = new Set();
-  codes.forEach((c) => latest.indices[c].estimate.providers
-    .filter((p) => !p.screened_out)
-    .forEach((p) => providers.add(p.provider)));
-  const totalLive = Object.values(series.indices).reduce((n, i) => n + i.live.length, 0);
-  const totalWithheld = Object.values(series.indices).reduce((n, i) => n + i.withheld_count, 0);
+  let selected = codes.find((c) => latest.indices[c].status === "published") ?? codes[0];
 
-  document.getElementById("stats").innerHTML = [
-    { k: "indices", v: `${published}/${codes.length}`, n: "printed today" },
-    { k: "providers", v: providers.size, n: "contributing, after screening" },
-    { k: "sources", v: Object.keys(latest.run.sources).length, n: "venues collected" },
-    { k: "fixings", v: totalLive, n: `${totalWithheld} withheld` },
-    { k: "days", v: series.dates.length, n: `since ${series.dates[0] ?? "--"}` },
-  ].map((s) => `<div class="stat">
-      <div class="k">${s.k}</div>
-      <div class="v">${s.v}</div>
-      <div class="n">${escapeHtml(s.n)}</div>
-    </div>`).join("");
+  document.getElementById("dash-sub").textContent =
+    `${longDate(latest.index_date)} · snapshot ${latest.snapshot} · methodology ${meta.methodology_version}`;
+  document.getElementById("board-meta").textContent =
+    `${latest.run.raw_observations} raw → ${latest.run.normalized_quotes} normalised · ${Object.keys(latest.run.sources).length} venues`;
 
-  /* contract */
-  const first = meta.contracts[0];
-  document.getElementById("contract-code").textContent = first.index_code;
-  document.getElementById("contract-text").textContent = first.description;
+  const picker = document.getElementById("picker");
+  picker.innerHTML = codes.map((c) =>
+    `<button type="button" data-code="${c}" aria-pressed="${c === selected}">${c}</button>`).join("");
 
-  /* waterfall */
-  document.getElementById("tiers").innerHTML = meta.tiers.map((t) => `
-    <div class="tier" data-tier="${t.tier}">
-      <span class="n">${t.tier}</span>
-      <div>
-        <h4>${escapeHtml(t.label)}</h4>
-        <p>${escapeHtml(t.definition)}</p>
+  // null means "now" -- the live view. Otherwise an ISO stamp from the tape.
+  let knowledgeTime = null;
+  const asofPanel = document.getElementById("asof-panel");
+  const asofInput = document.getElementById("asof");
+  const asofLabel = document.getElementById("asof-label");
+  const asofNote = document.getElementById("asof-note");
+
+  function stampsFor(code) {
+    // Only moments the tape actually recorded. A continuous time picker would
+    // invite questions the record cannot answer.
+    return [...new Set(series.indices[code].revisions.map((r) => r.published_at))].sort();
+  }
+
+  function syncAsofControl() {
+    const stamps = stampsFor(selected);
+    const revised = series.indices[selected].revisions.length
+                  > series.indices[selected].live.length;
+    asofPanel.hidden = stamps.length < 2;
+    asofInput.max = String(stamps.length);        // last position = now
+    asofInput.value = String(stamps.length);
+    asofNote.textContent = revised
+      ? `${series.indices[selected].revisions.length} revisions across ${series.indices[selected].live.length} dates`
+      : "no corrections on this index yet";
+    knowledgeTime = null;
+  }
+
+  function render() {
+    const board = renderBoard(latest, { onSelect: true, selected });
+    boardTable.innerHTML = board.html;
+    wireBoard(boardTable, select);
+
+    picker.querySelectorAll("button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.code === selected)));
+
+    const idx = latest.indices[selected];
+    const liveEntries = series.indices[selected].live;
+    const entries = knowledgeTime === null
+      ? liveEntries
+      : asOfSeries(series.indices[selected].revisions, knowledgeTime);
+
+    // What the reader is actually here to see: how the answer differed then.
+    let asofBanner = "";
+    if (knowledgeTime !== null) {
+      const liveBy = new Map(liveEntries.map((e) => [e.index_date, e]));
+      const changed = entries.filter((e) => {
+        const now = liveBy.get(e.index_date);
+        return !now || now.value !== e.value || now.revision !== e.revision;
+      });
+      const unknown = liveEntries.length - entries.length;
+      asofBanner = `<div class="asof-banner">
+        <strong>Reading the tape as known at ${escapeHtml(knowledgeTime.replace("T", " ").slice(0, 19))}Z.</strong>
+        ${changed.length
+          ? `${changed.length} value${changed.length === 1 ? "" : "s"} differ${changed.length === 1 ? "s" : ""} from today:
+             ${changed.slice(0, 4).map((e) => {
+               const now = liveBy.get(e.index_date);
+               return `<span class="mono">${e.index_date} ${e.value === null ? "withheld" : fmtUsd(e.value)}
+                       (rev ${e.revision}) &rarr; ${now && now.value !== null ? fmtUsd(now.value) : "withheld"}
+                       (rev ${now ? now.revision : "—"})</span>`;
+             }).join("; ")}`
+          : "No value differs from today."}
+        ${unknown > 0 ? `<br>${unknown} later date${unknown === 1 ? " was" : "s were"} not yet published.` : ""}
+      </div>`;
+    }
+
+    detail.innerHTML = `
+      <div class="panel">
+        <header>
+          <h2>${escapeHtml(idx.display_name)}</h2>
+          <span class="note">${series.indices[selected].published_count} published ·
+            ${series.indices[selected].withheld_count} withheld</span>
+        </header>
+        ${asofBanner}
+        ${chart(entries)}
+        <div class="body" style="border-top:1px solid var(--rule);">
+          <p style="margin:0;font-family:var(--mono);font-size:13px;color:var(--muted);">
+            ${escapeHtml(idx.contract)}</p>
+        </div>
       </div>
-      <span class="w">${t.weight.toFixed(2)}</span>
-    </div>`).join("");
+      ${gatesPanel(idx)}
+      ${providersPanel(idx)}
+      ${exposurePanel(idx)}
+      ${quotesPanel(idx)}
+      ${revisionsPanel(series.indices[selected].revisions)}`;
+  }
 
-  /* gates */
-  const g = meta.gates;
-  document.getElementById("gates-cards").innerHTML = [
-    { k: "Contributing providers", v: `≥ ${g.min_providers}`,
-      p: "Below this the estimate is a handful of opinions, and the outlier screen has too few points to mean anything." },
-    { k: "Contributing observations", v: `≥ ${g.min_observations}`,
-      p: "Provider breadth is not the same as evidence. A thin sample withholds even when several venues quote." },
-    { k: "Robust dispersion", v: `≤ ${g.max_dispersion}`,
-      p: "A market this dispersed is not one market, and a central estimate would misrepresent it." },
-    { k: "Single-provider weight", v: `≤ ${fmtPct(g.max_provider_weight_share)}`,
-      p: "Enforced by capping rather than by refusing, so no published value can rest on one venue's view." },
-  ].map((c) => `<div class="card">
-      <span class="label">${escapeHtml(c.k)}</span>
-      <p class="mono" style="font-size:20px;color:var(--accent);margin-bottom:10px;">${escapeHtml(c.v)}</p>
-      <p>${escapeHtml(c.p)}</p>
-    </div>`).join("");
+  function select(code) {
+    if (!codes.includes(code)) return;
+    selected = code;
+    syncAsofControl();
+    render();
+  }
 
-  /* footer */
-  document.getElementById("foot-version").textContent = meta.methodology_version;
-  document.getElementById("foot-range").textContent =
-    `${meta.coverage.first_date} → ${meta.coverage.last_date}`;
+  asofInput.addEventListener("input", () => {
+    const stamps = stampsFor(selected);
+    const pos = Number(asofInput.value);
+    knowledgeTime = pos >= stamps.length ? null : stamps[pos];
+    asofLabel.innerHTML = knowledgeTime === null
+      ? `<span class="mono">now</span> — the live tape`
+      : `<span class="mono">${escapeHtml(knowledgeTime.replace("T", " ").slice(0, 19))}Z</span>
+         — revision ${pos} of ${stamps.length - 1} recorded moments`;
+    render();
+  });
 
+  document.getElementById("asof-now").addEventListener("click", () => {
+    syncAsofControl();
+    asofLabel.innerHTML = `<span class="mono">now</span> — the live tape`;
+    render();
+  });
+
+  picker.addEventListener("click", (e) => {
+    const button = e.target.closest("button[data-code]");
+    if (button) select(button.dataset.code);
+  });
+
+  syncAsofControl();
+  asofLabel.innerHTML = `<span class="mono">now</span> — the live tape`;
+  render();
 } catch (err) {
   showError(boardTable, err);
 }
