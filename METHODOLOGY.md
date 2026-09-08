@@ -407,8 +407,34 @@ marketing document.
    contract, and no amount of estimator sophistication closes it — it requires
    commercial agreements with venues to report executed volume.
 
-6. **Correlated source failure.** One aggregator supplies most of the provider
-   breadth. See section 6.
+6. **Correlated source failure, which no gate can see.** `min_providers`
+   counts companies, not the routes they arrived by, and those numbers diverge
+   sharply: on the 7 September H100 fixing, 12 contributing providers arrived
+   by **5 venues**, with a single aggregator supplying **8 of the 12**. A
+   fixing drawing most of its providers through one feed reads as broad right
+   up until that feed breaks, at which point coverage collapses for a reason
+   the publication gates were never watching for.
+
+   The estimator now measures this. `venue_of` reduces each source to its
+   route -- `shadeform:lambdalabs` is Lambda Labs capacity reached through the
+   Shadeform feed -- and a `venue_concentration` flag is raised when one venue
+   supplies more than half the contributing providers. `gpuidx weights` prints
+   the breakdown. Note that `curated` resolves to one venue although it is a
+   collection method rather than a marketplace; that is the correct answer for
+   this purpose, because every curated input shares one hand-maintained file
+   and therefore one failure mode.
+
+   **It is a flag and not a gate, deliberately.** Two of the three published
+   indices currently sit at 67%, so any ceiling strict enough to bite would
+   withhold nearly everything, and any ceiling loose enough to pass would have
+   been chosen by looking at the sample it is meant to judge -- the same error
+   as patching the dispersion gate with a guessed constant. The number is
+   disclosed now; the refusing waits for evidence about where the line belongs.
+
+   The counting is also wrong in the opposite direction in at least one place.
+   Vast.ai is a marketplace of thousands of independent hosts and is counted as
+   a single provider, so its breadth is understated by the same convention that
+   overstates the aggregator's. See section 6.
 
 7. **The dispersion gate is not stable at current provider counts.** Two runs
    an hour apart on an unmoved market produced dispersion of 0.560 (10
