@@ -106,6 +106,8 @@ uv run gpuidx publish                      # run one collection + fixing cycle
 uv run gpuidx show GIX-H100                # the series
 uv run gpuidx explain GIX-H100 2026-08-27  # the whole derivation, end to end
 uv run gpuidx dispersion GIX-H100          # the gate arithmetic, worked step by step
+uv run gpuidx screen GIX-H100              # the outlier test, provider by provider
+uv run gpuidx weights GIX-H100             # tier, cap, share, and the value they make
 uv run gpuidx audit GIX-H100 2026-08-27    # every provider behind one value
 uv run gpuidx revisions GIX-H100 2026-08-27
 uv run gpuidx as-of GIX-H100 2026-08-27 2026-08-27T20:15:00Z
@@ -121,6 +123,12 @@ uv run gpuidx export-web                   # dump the archive as JSON for the de
 number; `explain` shows everything around them -- the collection funnel, the
 adjustment exposure, the screen, and the gates -- with the reasoning for each
 decision printed next to it.
+
+`dispersion`, `screen` and `weights` each take one step of that derivation and
+print the arithmetic for it: the gate that most often decides whether a value
+prints, the test that removes data, and the two rules that decide how much each
+provider counts. `weights` ends by reconciling its own weighted mean against the
+published value, so the explanation is checkable rather than merely plausible.
 
 ## Demo site
 
