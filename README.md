@@ -9,6 +9,11 @@ Built as a study of what it takes to turn heterogeneous compute pricing into a
 number something could settle against. **It is a demonstration. Do not settle
 anything against these values.**
 
+A companion study, [token-price-index](https://github.com/henryzhangpku/token-price-index),
+asks the same question of LLM inference pricing and reaches a different
+answer: some goods there have exactly one seller, so no amount of machinery
+can make them carry an index.
+
 The interesting part is not the pipeline — it is [METHODOLOGY.md](METHODOLOGY.md),
 particularly section 10.
 
