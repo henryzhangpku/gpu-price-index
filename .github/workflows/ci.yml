@@ -1,0 +1,31 @@
+name: ci
+
+# The tests and the lint already ran once a day inside the fixing workflow, which
+# means a broken commit stayed green until the next fixing -- up to a day of
+# believing main was sound. This runs them on the push instead.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: lint
+        run: uvx ruff check src tests
+
+      - name: tests
+        run: uv run --group dev pytest -q
+
+      - name: the site must not serve a cached copy of a changed file
+        # A stale version stamp keeps the old script live while the repository
+        # holds the new one, and nothing about the source explains it.
+        run: uv run python scripts/stamp_assets.py --check
