@@ -148,6 +148,18 @@ code, .mono, .num { font-family: var(--mono); }
 }
 .theme-toggle:hover { color: var(--ink); border-color: var(--accent-line); }
 
+/* Below about 380px the brand, three links and the theme button no longer fit
+   on one line, and the topbar was pushing the document wider than the viewport
+   -- which slides a sticky bar off to the left the moment anyone scrolls right.
+   Tighten the nav's own spacing rather than let it set the page width. Found
+   on the token benchmark's site first; the two share this chrome. */
+@media (max-width: 420px) {
+  .topbar { padding: 0 12px; gap: 10px; }
+  .topbar nav { gap: 0; }
+  .topbar nav a { padding: 15px 5px; font-size: 12.5px; }
+  .theme-toggle { margin-left: 4px; }
+}
+
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 26px; }
 .prose { max-width: 66ch; }
 .prose p { margin: 0 0 18px; }
