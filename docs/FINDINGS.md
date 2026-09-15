@@ -361,6 +361,53 @@ responsibly settle a contract.
 
 ---
 
+## 10. The disclosure and the cap were denominated in different things
+
+The methodology caps any one contributor at **35% of the weight**
+(`max_provider_weight_share`). Separately it discloses venue concentration,
+because a provider count answers "how many companies?" and not "how many
+independent ways did this data reach me?" — one aggregator resells roughly
+twenty clouds, so a single feed can supply most of a fixing's contributors
+while the provider count looks healthy. Finding #3 is the same class seen from
+another angle.
+
+The disclosure counted **providers per venue**. The cap limits **weight**. For
+as long as weights stay near-uniform the two agree closely enough that nobody
+looks twice: on the H100 fixing of 15 September, one venue supplied 8 of 11
+contributors, which is 73% by count and 70% by weight. Three points apart, and
+the reader is invited to compare either of them against a 35% cap.
+
+They are not obliged to stay that close. Weight is assigned by tier, so four
+providers of eleven — **36% by count, comfortably under the 50% disclosure
+threshold** — can carry the majority of the fixing if they sit a tier above
+everyone else. In that arrangement the concentration is real, the cap on any
+individual provider still holds, and nothing in the output says a word about
+it. The two numbers most likely to be compared were measuring different
+quantities, and the one that mattered was the one not being reported.
+
+So `venue_weight` now reports each venue's share of the fixing in the same
+unit the cap is written in, the flag fires on whichever of the two shares is
+worse, and both are always printed. The two can even name different venues —
+one feed supplying the most contributors while another carries the most value
+— which is exactly the case the old measure could not describe at all.
+
+It stays a flag rather than a gate, for the reason recorded in the code: on
+today's data a single venue carries 70% of the H100 weight, so any ceiling
+strict enough to bite would withhold every index, and any ceiling loose enough
+to pass would have been chosen by looking at the sample it is meant to judge.
+Disclose first; gate when there is evidence for a number rather than a number
+fitted to the evidence.
+
+**The general lesson, which is the reason this is written down.** A control
+and a disclosure that are supposed to be about the same risk have to be
+denominated in the same unit, or the disclosure cannot be checked against the
+control and the gap between them is invisible precisely while it is small.
+This one was found by reading the published board rather than the code, which
+is the only way it could have been found: both halves are individually
+correct.
+
+---
+
 ## Reproducing
 
 ```bash
