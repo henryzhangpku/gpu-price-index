@@ -24,6 +24,7 @@ from gpuidx.estimator import (
     venue_breakdown,
     venue_concentration_flags,
     venue_of,
+    venue_weight,
 )
 from gpuidx.models import Tier
 from gpuidx.spec import Gates
@@ -31,12 +32,13 @@ from gpuidx.spec import Gates
 GATES = Gates()
 
 
-def _agg(provider: str, screened: bool = False) -> ProviderAggregate:
+def _agg(provider: str, screened: bool = False, weight: float = 1.0) -> ProviderAggregate:
     return ProviderAggregate(
         provider=provider,
         price=3.00,
         quote_count=3,
         best_tier=Tier.EXECUTABLE,
+        weight=weight,
         screened_out=screened,
     )
 
@@ -144,3 +146,57 @@ def _three(make_obs, source: str, price: float):
         normalize(make_obs(source=source, price_per_gpu=price * tilt, sku=f"{source}-{i}"))
         for i, tilt in enumerate((0.98, 1.00, 1.02))
     ]
+
+
+def test_concentration_is_reported_in_the_unit_the_cap_is_written_in() -> None:
+    """Counting providers per venue answers a different question than the cap asks.
+
+    ``max_provider_weight_share`` limits WEIGHT. The venue disclosure counted
+    PROVIDERS. While weights are near-uniform the two agree, so the mismatch
+    stayed invisible -- but they are not obliged to agree, and a reader
+    comparing "one venue supplies 36% of contributors" against a 35% weight cap
+    is comparing two different things.
+    """
+    # Uniform weights: the two units say the same thing.
+    uniform = [_agg("shadeform:a"), _agg("shadeform:b"), _agg("runpod"), _agg("vastai")]
+    assert venue_breakdown(uniform) == {"shadeform": 2, "runpod": 1, "vastai": 1}
+    assert venue_weight(uniform)["shadeform"] == pytest.approx(0.50)
+
+    # Screened providers count in neither.
+    with_screened = [*uniform, _agg("shadeform:dead", screened=True, weight=9.0)]
+    assert venue_breakdown(with_screened)["shadeform"] == 2
+    assert venue_weight(with_screened)["shadeform"] == pytest.approx(0.50)
+
+    # No weights assigned yet: the weight view is empty rather than wrong.
+    assert venue_weight([_agg("a", weight=0.0)]) == {}
+
+
+def test_the_flag_fires_on_whichever_unit_is_worse() -> None:
+    """A venue can be a minority of contributors and a majority of the value.
+
+    Four of eleven providers is 36% by count, under the flag -- and if those
+    four sit in a higher tier they can still carry most of the fixing. The old
+    measure saw nothing. The flag now takes the larger of the two shares, so a
+    concentration that shows up in only one unit still gets disclosed, and the
+    text prints both numbers.
+    """
+    # Minority by count (2 of 5 = 40%), majority by weight (80%).
+    aggs = [
+        _agg("shadeform:a", weight=4.0),
+        _agg("shadeform:b", weight=4.0),
+        _agg("runpod", weight=0.67),
+        _agg("vastai", weight=0.67),
+        _agg("lambda", weight=0.66),
+    ]
+    assert venue_breakdown(aggs)["shadeform"] / len(aggs) == pytest.approx(0.40)
+    assert venue_weight(aggs)["shadeform"] == pytest.approx(0.80)
+
+    flags = venue_concentration_flags(aggs)
+    assert len(flags) == 1
+    detail = flags[0].detail
+    assert "shadeform is 80% of the fixing's weight" in detail
+    assert "2 of 5 contributing providers (40%)" in detail  # both units, always
+
+    # Under the threshold in BOTH units: still silent.
+    even = [_agg(f"v{i}", weight=1.0) for i in range(5)]
+    assert venue_concentration_flags(even) == []

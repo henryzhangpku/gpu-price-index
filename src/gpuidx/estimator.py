@@ -323,6 +323,32 @@ def venue_breakdown(aggregates: list[ProviderAggregate]) -> dict[str, int]:
     return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
+def venue_weight(aggregates: list[ProviderAggregate]) -> dict[str, float]:
+    """Share of the FIXING each venue carries, largest first.
+
+    The count breakdown answers "how many of the contributors came this way?"
+    and the cap is written in a different unit entirely -- ``max_provider_
+    weight_share`` limits WEIGHT. The two track each other only while weights
+    are near-uniform, and they are not obliged to: four providers of eleven
+    can carry most of the value if they sit in a higher tier, which the count
+    would report as a comfortable 36%.
+
+    Disclosing concentration in the same unit the cap is written in is the
+    only way the two statements can be compared, so both are reported and the
+    flag fires on whichever is worse.
+    """
+    total = sum(a.weight for a in aggregates if not a.screened_out)
+    if total <= 0:
+        return {}
+    shares: dict[str, float] = {}
+    for agg in aggregates:
+        if agg.screened_out:
+            continue
+        venue = venue_of(agg.provider)
+        shares[venue] = shares.get(venue, 0.0) + agg.weight / total
+    return dict(sorted(shares.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
 def venue_concentration_flags(aggregates: list[ProviderAggregate]) -> list[QualityFlag]:
     """Warn when the provider count overstates how independent the sample is.
 
@@ -336,19 +362,40 @@ def venue_concentration_flags(aggregates: list[ProviderAggregate]) -> list[Quali
     if total == 0:
         return []
 
+    by_weight = venue_weight(aggregates)
     venue, count = next(iter(breakdown.items()))
-    share = count / total
-    if share <= VENUE_CONCENTRATION_FLAG:
+    by_count = count / total
+    # WHICHEVER IS WORSE, AND BOTH ARE PRINTED. These can name different
+    # venues: one feed can supply the most contributors while another carries
+    # the most value. Taking the larger of the two shares means the flag
+    # cannot be dodged by a concentration that only shows up in the unit the
+    # old measure did not use.
+    worst_weight_venue, worst_weight = next(iter(by_weight.items()), ("", 0.0))
+    if by_count <= VENUE_CONCENTRATION_FLAG and worst_weight <= VENUE_CONCENTRATION_FLAG:
         return []
+
+    if worst_weight > by_count and worst_weight_venue:
+        lead, share, unit = worst_weight_venue, worst_weight, "of the fixing's weight"
+        other = (
+            f"{venue} supplies {count} of {total} contributing providers "
+            f"({by_count:.0%})"
+        )
+    else:
+        lead, share, unit = venue, by_count, f"of {total} contributing providers ({count})"
+        other = (
+            f"{worst_weight_venue} carries {worst_weight:.0%} of the weight"
+            if worst_weight_venue
+            else "no weight assigned"
+        )
 
     return [
         QualityFlag(
             severity="warn",
             code="venue_concentration",
             detail=(
-                f"{venue} supplies {count} of {total} contributing providers "
-                f"({share:.0%}); {len(breakdown)} independent venues in total, "
-                "so the provider count overstates independence"
+                f"{lead} is {share:.0%} {unit}; {other}; "
+                f"{len(breakdown)} independent venues in total, so the provider "
+                "count overstates independence"
             ),
         )
     ]
