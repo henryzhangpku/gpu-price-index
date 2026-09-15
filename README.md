@@ -1,13 +1,47 @@
-# gpuidx
+# GPU rental price index
 
-A working daily GPU rental price benchmark, built from live public pricing
-across ~20 clouds, with the governance machinery a settlement-grade index
-needs: a waterfall, robust estimation, publication gates, and a bitemporal
-audit trail.
+**What does it cost to rent one H100 for an hour, in the United States,
+today?** This answers that once a day, for five accelerators, from live public
+pricing across about twenty-five clouds — and refuses to answer when the
+market does not support an answer.
 
-Built as a study of what it takes to turn heterogeneous compute pricing into a
-number something could settle against. **It is a demonstration. Do not settle
-anything against these values.**
+[**The daily board**](https://henryzhangpku.github.io/gpu-price-index/) ·
+[methodology](METHODOLOGY.md) · [what the data turned out to show](docs/FINDINGS.md)
+
+### Why it is harder than averaging some prices
+
+An "H100-hour" is not one good. A PCIe card on Ethernet in a spare-capacity
+marketplace and an SXM card on an NVLink fabric under a datacentre SLA differ
+in price by a factor of three, and a buyer cannot substitute one for the
+other. So the index defines exactly one good and restates every input as that
+good or discards it — the way a commodity benchmark assesses a standard cargo
+and treats everything else as a spread to it.
+
+Then the prices themselves fight back. One venue in the sample prices spot at
+exactly half of on-demand across all fifty of its SKUs; that is a discount
+schedule, not a market-clearing price, and it carries no information about
+what compute costs. Eight of eleven contributors on a typical day arrive
+through a single aggregator, so a healthy-looking provider count conceals a
+single point of failure. Three hyperscalers sit five to twelve robust standard
+deviations above the median, which is not a set of outliers but a signal that
+the sample contains two different markets.
+
+### The refusals are the product
+
+Built as if a cash-settled derivative referenced it, because that constraint
+is what forces every decision to be defensible. A market-intelligence number
+can be approximately right and quietly revised. A settlement number has to
+reproduce years later, survive a counterparty who lost money on it, and resist
+a participant who wants it somewhere else.
+
+So the gates withhold rather than guess, and **two of the five indices decline
+to print on a typical day** — one because its contributors disagree past the
+dispersion ceiling, one because a single venue quotes it and an index over one
+seller is that seller's rate card wearing an index's name. A refusal is
+written to the tape as a row carrying the gate that caused it, because a gap
+in a series is a fact about the market and not an absence of one.
+
+**It is a demonstration. Do not settle anything against these values.**
 
 A companion study, [token-price-index](https://github.com/henryzhangpku/token-price-index),
 asks the same question of LLM inference pricing and reaches a different
