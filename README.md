@@ -137,6 +137,114 @@ Note where `withheld` goes. A refusal to print is written to the tape as a row
 like any other, carrying the gate that caused it. A gap in the series is a
 fact the record has to carry, not an absence of one.
 
+## How the code is arranged
+
+The flowchart above is what the system *decides*. This is where those
+decisions live.
+
+There is deliberately no class diagram: there is almost no inheritance to
+draw. The types are frozen dataclasses and enums, the logic is functions over
+them, and what a reader needs is the **layering** — which module may import
+which, and where the two impure edges are.
+
+```mermaid
+flowchart TB
+    subgraph IO["touches the world"]
+        PROV["providers/ · the only network calls<br/>base · curated · datacrunch · runpod · shadeform · vastai"]
+        STORE["store.py · the only database"]
+    end
+    subgraph PURE["pure: same inputs, same answer, no clock and no socket"]
+        MODELS["models.py · the vocabulary<br/>RawObservation · NormalizedQuote · IndexValue · GateResult · QualityFlag"]
+        SPEC["spec.py · the RULES as data<br/>benchmark contracts · adjustment factors · Gates"]
+        NORM["normalize.py · restate onto the benchmark good, or reject"]
+        EST["estimator.py · one vote per provider, screen, weight, gate"]
+        SENS["sensitivity.py · how much rests on judgement"]
+        CAL["calibrate.py · test the factors against venue pricing"]
+        FWD["forward.py · what committed-use discounts do and don't imply"]
+    end
+    subgraph ORCH["orchestration"]
+        PIPE["pipeline.py · one collection + fixing cycle"]
+        QUAL["quality.py · staleness, dropout, level shifts"]
+        REPRO["reproduce.py · recompute every value from its own inputs"]
+        ARCH["archive.py · immutable snapshots"]
+        WEB["web.py · dump the archive as JSON"]
+        CLI["cli.py · every command in the table below"]
+    end
+
+    MODELS --> SPEC --> NORM --> EST
+    MODELS --> EST
+    EST --> SENS
+    PROV --> PIPE
+    NORM --> PIPE
+    EST --> PIPE
+    ARCH --> PIPE
+    STORE --> PIPE
+    EST --> QUAL --> PIPE
+    ARCH --> REPRO
+    STORE --> REPRO
+    PIPE --> CLI
+    REPRO --> CLI
+    SENS --> CLI
+    CAL --> CLI
+    FWD --> CLI
+    ARCH --> WEB
+```
+
+**The shape is the argument.** `providers/` is the only code that opens a
+socket and `store.py` is the only code that opens the database; everything
+between them is a pure function of its arguments. That is what makes
+`gpuidx verify` possible at all — a published value can be recomputed from the
+snapshot its tape row names, years later, with the venues long since
+repriced — and it is why the daily run refuses to commit when a recomputation
+disagrees. An architecture diagram is usually decoration. Here the acyclic,
+one-way shape *is* the reproducibility claim, and CI fails if it stops holding.
+
+### The same journey in types
+
+Each arrow is a function; each box is a frozen dataclass. This is the
+flowchart above, rewritten in the names you will actually grep for.
+
+```mermaid
+flowchart LR
+    RO["RawObservation<br/><i>what a venue said</i>"]
+    NQ["NormalizedQuote<br/><i>restated onto the benchmark good</i>"]
+    RJ["Rejection<br/><i>and why it did not count</i>"]
+    PA["ProviderAggregate<br/><i>one vote per provider,<br/>weight + screen verdict</i>"]
+    ES["Estimate<br/><i>candidate value, every GateResult,<br/>every QualityFlag</i>"]
+    IV["IndexValue<br/><i>published, or withheld naming the gate</i>"]
+    TAPE[("append-only tape<br/><i>revision + as-of</i>")]
+
+    RO -->|normalize| NQ
+    RO -.->|normalize| RJ
+    NQ -->|aggregate_by_provider| PA
+    PA -->|screen_outliers, assign_weights| PA
+    PA -->|estimate| ES
+    ES -->|pipeline| IV
+    IV --> TAPE
+```
+
+`Rejection` is a return value, not an exception, and that is the point: a
+refused input is part of the output. Five of ten records failing to reach the
+fixing is more interesting than the fixing.
+
+| module | owns | may import |
+|---|---|---|
+| `models.py` | the vocabulary: every record type and enum | nothing |
+| `spec.py` | the rules **as data** — contracts, adjustment factors, `Gates` | models |
+| `normalize.py` | restating a raw observation, or rejecting it with a reason | models, spec |
+| `estimator.py` | provider medians, MAD screen, tier weights and caps, gate evaluation | models, spec |
+| `sensitivity.py` | how much of a value came from the adjustment schedule | models, spec, estimator |
+| `calibrate.py` | testing asserted factors against what venues actually charge | models |
+| `forward.py` | term structure, and why a spot-to-reserved ratio is not a forward | nothing |
+| `providers/` | **the only network I/O**, one adapter per venue | models |
+| `store.py` | **the only database**, bitemporal and append-only | models, estimator |
+| `quality.py` | staleness, seller dropout, level shifts, self-repricing contributors | models, spec, estimator, store |
+| `archive.py` | immutable snapshots of what was read | models |
+| `pipeline.py` | one collection-and-fixing cycle | everything above |
+| `reproduce.py` | recomputing published values and reporting mismatches | archive, estimator, normalize, spec, store |
+| `web.py` | the archive as JSON for the demo site | archive, estimator, models, normalize, sensitivity, spec |
+| `cli.py` | the commands below, and nothing else | the orchestration layer |
+
 ## Commands
 
 ```bash
@@ -272,16 +380,13 @@ rather than into a confidently wrong number.
 ## Layout
 
 ```
-src/gpuidx/
-  spec.py         benchmark contracts, adjustment factors, gates  <- the methodology
-  normalize.py    restate a venue price as the benchmark good
-  estimator.py    provider medians, MAD screen, weight caps, gates
-  quality.py      stalled feeds, dropout, level shifts
-  store.py        bitemporal append-only SQLite
-  pipeline.py     the daily cycle, wired end to end
-  web.py          export the archive as JSON for the demo site
-  providers/      one adapter per venue
-web/              the static demo site; reads the export, computes nothing
+src/gpuidx/     the package — see "How the code is arranged" above for the
+                layering, the type chain and what each module owns
+web/            the static demo site; reads the export, computes nothing
+docs/           METHODOLOGY.md, FINDINGS.md
+snapshots/      immutable captures of what each venue said, per run
+series/         the exported tape
+tests/          the suite, including the property tests over generated markets
 ```
 
 `spec.py` holds every number a dispute would be argued over, in one file, on
