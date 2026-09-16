@@ -26,6 +26,14 @@ than the family of gold and crude. Two practical consequences:
   by carry. A B200 ramp mechanically depresses the H100 forward curve in a way
   no storage-cost model would predict.
 
+SEE ALSO. Bandi & Su, "(Early) AI Compute Asset Pricing", arXiv:2607.12156
+(2026), establish the same non-storability result formally -- reached here
+independently -- and then take the constructive step this module does not:
+differentiating an observed TERM rental curve into a synthetic future,
+F_syn(T) = d/dT[(T-t) * Pi(t->T)]. Spot -> forward is invalid; term structure
+-> forward is valid. That needs transacted term rates, which is exactly what
+is not observable here. See docs/RELATED-WORK.md.
+
 What *is* observable is the committed-use discount: a venue will sell a
 one-year or three-year commitment below its on-demand rate. That discount is a
 real price, but it bundles at least four things:
