@@ -11,8 +11,6 @@ The fixture is the live Polymarket H100 end-of-October ladder as at
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from gpuidx.implied import (

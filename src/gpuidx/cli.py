@@ -542,6 +542,11 @@ def implied_cmd(
     open_span: float = typer.Option(
         0.25, help="Assumed width of the open-ended tail brackets, USD"
     ),
+    json_out: Path = typer.Option(
+        None,
+        "--json",
+        help="Also write the reading to this path as JSON, for a dated record",
+    ),
 ) -> None:
     """Read an expected settlement level off prediction-market bracket ladders.
 
@@ -571,7 +576,7 @@ def implied_cmd(
     for tenor, slug in DEFAULT_LADDERS:
         try:
             dist = fetch_distribution(slug, tenor)
-        except Exception as exc:  # noqa: BLE001 - a dead slug must not kill the command
+        except Exception as exc:  # a dead slug must not kill the command
             console.print(f"[yellow]{tenor}: could not read ({exc})[/]")
             continue
         verdict = dist.assess(open_span)
@@ -590,7 +595,7 @@ def implied_cmd(
         for column, justify in (("bracket", "right"), ("midpoint", "right"),
                                 ("implied", "right"), ("volume", "right")):
             table.add_column(column, justify=justify)
-        for bracket, probability in zip(dist.brackets, dist.probabilities()):
+        for bracket, probability in zip(dist.brackets, dist.probabilities(), strict=True):
             table.add_row(
                 bracket.label,
                 f"${bracket.midpoint(open_span):.3f}",
@@ -645,6 +650,35 @@ def implied_cmd(
         "[dim]Levels are an indication of direction. The dispersion is the more "
         "reliable number: it needs the shape of the book, not its calibration.[/]"
     )
+
+    if json_out is not None:
+        _write_implied_record(json_out, curve, open_span)
+        console.print(f"[dim]written to {json_out}[/]")
+
+
+def _write_implied_record(path: Path, curve: list[dict], open_span: float) -> None:
+    """Append-only dated record of one reading.
+
+    Written even when every ladder was withheld: "the market was too thin to
+    read today" is a fact about the market, and losing it would leave a gap
+    that looks like the job not having run.
+    """
+    import json as _json
+    from datetime import datetime
+
+    payload = {
+        "read_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "open_span": open_span,
+        "ladders": [
+            {
+                **row,
+                "settles": row["settles"].isoformat() if row.get("settles") else None,
+            }
+            for row in curve
+        ],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(payload, indent=1) + "\n", encoding="utf-8")
 
 
 @app.command("forward")
