@@ -91,8 +91,12 @@ def test_the_attack_is_flagged(store) -> None:
     ]
     flags = check_provider_level_shift(store, CODE, TODAY, aggregates)
 
-    assert [f.code for f in flags] == ["provider_level_shift"]
+    # Under the current methodology the check also says what kind of move it
+    # was: eleven peers on both days and none of them moved with the attacker,
+    # so it is named for what it is rather than merely noticed.
+    assert [f.code for f in flags] == ["provider_level_shift_uncorroborated"]
     assert ATTACKER in flags[0].detail
+    assert "attack" in flags[0].detail
     assert flags[0].severity == "warn"
     assert flags[0].index_code == CODE
 

@@ -14,6 +14,12 @@ The answers built in here:
   and refuse to publish below a provider-count floor.
 * **Wait for a quiet day.** Publication gates are evaluated every day, so a
   thin day withholds rather than printing a manipulable number.
+* **Sit at the edge of the panel.** The central estimate is an interquantile
+  mean over spread votes, with the width of the band a published parameter
+  of the methodology. At 1.0 it is the weighted mean and an edge provider
+  moves it in proportion to its weight; as the band closes it becomes the
+  weighted median and an edge provider cannot move it at all until it
+  crosses the middle. Neither end is privileged; see ``interquantile_mean``.
 
 Withholding is a first-class outcome. A gap in the series is a fact about the
 market; an interpolated value is a fiction about it.
@@ -25,7 +31,7 @@ import statistics
 from dataclasses import dataclass, field
 
 from .models import GateResult, NormalizedQuote, QualityFlag, Tier
-from .spec import CURRENT_METHODOLOGY, Gates, Methodology
+from .spec import CURRENT_METHODOLOGY, EstimatorParams, Gates, Methodology
 
 #: Scale factor making MAD a consistent estimator of sigma for normal data.
 MAD_TO_SIGMA = 1.4826
@@ -74,6 +80,11 @@ class ProviderAggregate:
     weight: float = 0.0
     screened_out: bool = False
     screen_reason: str | None = None
+    #: How much the provider's own quotes for this good disagree with each
+    #: other, as a robust coefficient of variation. Unclamped: the floor and
+    #: ceiling are applied when it is turned into votes, so an audit can see
+    #: both what the venue showed and what the estimator used.
+    spread: float = 0.0
 
 
 @dataclass
@@ -88,6 +99,20 @@ class Estimate:
     @property
     def contributing(self) -> list[ProviderAggregate]:
         return [p for p in self.providers if not p.screened_out]
+
+    @property
+    def band(self) -> float | None:
+        """Half-width of the stability band, in the index's own units.
+
+        The level says where the market is; this says how much the
+        contributors disagree about it, as the robust sigma of the panel in
+        dollars. Published beside the value rather than buried in a
+        dispersion ratio, because a reader comparing $3.34 with $3.49 needs
+        to know at once whether that is inside the noise.
+        """
+        if self.value is None or self.dispersion is None:
+            return None
+        return self.dispersion * self.value
 
     @property
     def venue_count(self) -> int:
@@ -132,12 +157,15 @@ def aggregate_by_provider(quotes: list[NormalizedQuote]) -> list[ProviderAggrega
     aggregates: list[ProviderAggregate] = []
     for provider, group in sorted(buckets.items()):
         prices = [q.normalized_usd_per_gpu_hour for q in group]
+        median = statistics.median(prices)
+        mad = statistics.median([abs(p - median) for p in prices])
         aggregates.append(
             ProviderAggregate(
                 provider=provider,
-                price=statistics.median(prices),
+                price=median,
                 quote_count=len(group),
                 best_tier=min(q.tier for q in group),
+                spread=(mad * MAD_TO_SIGMA / median) if median > 0 else 0.0,
             )
         )
     return aggregates
@@ -274,6 +302,86 @@ def _weighted_mean(aggregates: list[ProviderAggregate]) -> float | None:
     if total <= 0:
         return None
     return sum(a.price * a.weight for a in aggregates) / total
+
+
+def vote_spread(agg: ProviderAggregate, params: EstimatorParams) -> float:
+    """The spread a contributor's votes are cast at, as a fraction of its price.
+
+    Its own quotes set it; the floor stops a single frozen rate card claiming
+    a certainty it has not demonstrated, and the ceiling stops a venue whose
+    own listings disagree wildly from voting at both ends of the panel.
+    """
+    return min(max(agg.spread, params.sigma_floor), params.sigma_ceiling)
+
+
+def votes(aggregates: list[ProviderAggregate], params: EstimatorParams) -> list[tuple[float, float]]:
+    """Three votes per contributor, each carrying a third of its weight."""
+    out: list[tuple[float, float]] = []
+    for agg in aggregates:
+        if agg.weight <= 0:
+            continue
+        s = vote_spread(agg, params)
+        third = agg.weight / 3.0
+        out.append((agg.price * (1.0 - s), third))
+        out.append((agg.price, third))
+        out.append((agg.price * (1.0 + s), third))
+    return sorted(out)
+
+
+def interquantile_mean(
+    aggregates: list[ProviderAggregate], params: EstimatorParams
+) -> float | None:
+    """Weighted mean of the votes in the central ``robustness_band`` of vote mass.
+
+    The objection to a mean is that a provider at the edge of the panel moves
+    it in proportion to its weight, however far from the market it sits. The
+    objection to a median is the mirror image: it depends only on whichever
+    vote straddles the midpoint of the mass, so every other provider can move
+    and the index will not, until one of them crosses the middle. Both are
+    true. Rather than pick a side and argue, the position between them is a
+    parameter, and it is published with the value.
+
+    Each contributor votes three times -- at ``p - sigma``, ``p`` and
+    ``p + sigma``, a third of its weight each -- so that a provider whose own
+    quotes disagree spreads its influence and a provider whose quotes agree
+    concentrates it. Sort the votes, walk cumulative mass, and average the
+    part of it lying between the ``(1 - band) / 2`` and ``(1 + band) / 2``
+    quantiles, apportioning a vote that straddles a boundary by the share of
+    it inside. Continuous in the band, so a small change in the parameter is
+    a small change in the value.
+
+    At ``robustness_band >= 1.0`` every vote is inside and the result is the
+    weighted mean of provider prices exactly -- the symmetric votes cancel --
+    so that case is short-circuited to the plain weighted mean rather than
+    recomputed through floating-point sums that would differ in the last bit.
+    """
+    if params.robustness_band >= 1.0:
+        return _weighted_mean(aggregates)
+    if params.robustness_band <= 0.0:
+        raise ValueError("robustness_band must be positive; use a small band for a median")
+
+    ballot = votes(aggregates, params)
+    total = sum(w for _, w in ballot)
+    if total <= 0:
+        return None
+
+    lo = (1.0 - params.robustness_band) / 2.0 * total
+    hi = (1.0 + params.robustness_band) / 2.0 * total
+
+    mass = 0.0
+    numer = 0.0
+    cursor = 0.0
+    for price, w in ballot:
+        start, end = cursor, cursor + w
+        cursor = end
+        inside = min(end, hi) - max(start, lo)
+        if inside <= 0:
+            continue
+        mass += inside
+        numer += inside * price
+    if mass <= 0:
+        return None
+    return numer / mass
 
 
 def robust_dispersion(aggregates: list[ProviderAggregate]) -> float | None:
@@ -442,7 +550,7 @@ def estimate(
 
     contributing = [a for a in aggregates if not a.screened_out]
     dispersion = robust_dispersion(contributing)
-    value = _weighted_mean(contributing) if contributing else None
+    value = interquantile_mean(contributing, methodology.estimator) if contributing else None
 
     tier1_present = any(a.best_tier == Tier.EXECUTABLE for a in contributing)
     observation_count = sum(a.quote_count for a in contributing)

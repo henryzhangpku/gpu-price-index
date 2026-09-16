@@ -53,6 +53,45 @@ This mirrors how physical commodity benchmarks work: Platts assesses a
 standard cargo, the Baltic indices assess a standard route. The standard good
 is the benchmark; everything else is a spread to it.
 
+### 3.1 Is it the product it names?
+
+An alias match says the venue's string names this GPU. It does not say the
+venue is selling this GPU. The same die ships in variants that are different
+products at different prices — the 40 GB A100 against the 80 GB, the 94 GB
+dual-slot H100 NVL against the SXM — and a listing whose own label or stated
+specs identify one of those is not evidence about the benchmark good. It
+cannot be adjusted into one, either: the schedule in section 4 prices
+attributes of the *same* card, and there is no honest factor between two
+cards.
+
+So a listing is **rejected, with the reason**, when its label carries a
+variant token from a per-contract rule set, or when the VRAM it discloses
+matches the contract under neither of the two conventions venues use for the
+figure (per card, or the node total). Each rule names the observation that
+motivated it. The rule set is in `spec.PRODUCT_IDENTITY_RULES`; the day it was
+added, seventeen Shadeform `A100` listings at 40 GB were being priced into
+`GIX-A100`, and no other check could have noticed, because a 40 GB A100 at a
+40 GB price is a perfectly plausible 80 GB quote.
+
+A bare label with no VRAM — `A100`, `H100` — is admitted as before. That is
+an ambiguity the venue created and this document records rather than resolves.
+
+### 3.2 Is it a rate, in the benchmark's currency?
+
+A **"from $X" teaser** is the floor of a configuration menu the venue did not
+publish. It says the venue is in the market; it does not say at what price for
+any configuration, so it can never price the index. Observations carry a
+`price_kind`, adapters set it, and a teaser is rejected as such. As of the
+16 September 2026 audit none of the four live feeds emits one; the field
+exists so that one can only ever enter labelled.
+
+**Currency is recorded, never assumed.** Every observation states the currency
+the venue quoted in. There is no exchange-rate table here, so an observation
+in any currency but USD is held out with that reason, rather than read as
+dollars because the field it sits in was named before the record carried a
+currency. The field name (`usd_per_hour_total`) is kept for the archived
+snapshots that use it, and its docstring says what it now means.
+
 ## 4. Restating inputs — and why this is the weak point
 
 Non-conforming attributes are restated with multiplicative factors. A factor
@@ -225,7 +264,41 @@ Per index, per day:
    of total weight. The cap is applied iteratively, since capping one provider
    raises everyone else's share. Below 1/0.35 ≈ 3 providers the cap is
    unsatisfiable and is skipped; such an index fails the provider gate anyway.
-4. **Take the weighted mean** of surviving provider medians.
+4. **Take the interquantile mean of spread votes.** Each surviving provider
+   casts three votes — at its median less its spread, at its median, and at
+   its median plus its spread — each carrying a third of its weight. The
+   spread is the robust coefficient of variation of the provider's own quotes
+   for the good, floored at **3%** so that a rate card that has not moved in
+   weeks cannot claim a certainty it never demonstrated, and capped at 50% so
+   that a venue whose own listings disagree wildly cannot vote at both ends of
+   the panel. The votes are sorted, and the value is the weighted mean of
+   those lying in the central **`robustness_band`** of cumulative vote mass.
+
+   The band is the position between two estimators that are each wrong in a
+   different way. At 1.0 every vote counts and the value is exactly the
+   weighted mean of provider medians, which a provider at the edge of the
+   panel moves in proportion to its weight however far out it sits. As the
+   band closes the value becomes the weighted median, which depends only on
+   the vote straddling the middle of the mass, so every other provider can
+   move and the index will not until one of them crosses it. Neither end is
+   privileged. The band is a published parameter of the methodology version,
+   and `gpuidx robustness` prints what every setting would have published
+   across the archive.
+
+   **It publishes at 1.0.** Not because the mean is right, but because the
+   measurement says so on this panel: across 21 fixings, narrowing the band
+   cut the worst day-over-day move on the eleven-provider `GIX-H100` from
+   17.5% to 5%, and *raised* it on the seven-provider `GIX-H200` from 19.5%
+   to 54.6%. With six or seven contributors the median is not stable — it
+   jumps between two venues on the day one of them drops out — and the mean's
+   exposure to an edge provider is the smaller of the two problems. The
+   setting is revisited when the panels are wider, and the trigger for
+   revisiting it is a number rather than an argument.
+
+The **band published beside the level** — `$3.19 ±0.75` — is the robust sigma
+of the contributing panel in dollars, the same dispersion the gate in section 7
+tests, restated in the index's own units so that a reader comparing two days
+can see at once whether the move is inside the noise.
 
 Aggregator attribution matters here. Shadeform resells roughly twenty
 independent clouds through one feed. Counting it as a single provider would
@@ -246,6 +319,18 @@ index prints `withheld` with the failing gate recorded.
 | Contributing observations | ≥ 8 | yes |
 | Robust dispersion (MAD/median) | ≤ 0.45 | yes |
 | Executable input present | at least one tier 1 | no — off by default |
+| Marketplace book population | ≥ 4 distinct machines and ≥ 3 distinct hosts, per venue per index | yes, from 1.1.0 |
+
+The book-population floor is a gate on a *venue's seat* rather than on the
+index. A price list is one seller's statement and gets one vote. A marketplace
+book is many sellers' asks and gets one vote too, but that vote is a median
+across the book, and a median over three boxes from one host is that host's
+rate card wearing a marketplace's name. Below the floors the venue is held out
+of that index, with the counts recorded on the run. It fails closed: a book
+whose rows do not identify their machines cannot prove how many it recorded,
+and is held out rather than trusted. Every archived Vast.ai snapshot before
+1.1.0 is in that state, which is why a 1.1.0 recomputation of an earlier day
+prices without Vast.ai and is not what that day would have printed.
 
 The executable-input gate is implemented but disabled (`require_tier1` in
 `src/gpuidx/spec.py` defaults to false). With it off, a value resting entirely
@@ -300,6 +385,16 @@ prices forever is not:
   worse than one that surfaces them. It requires sign-off, not suppression.
 - **Adjustment dominance** — over half of inputs needing 25%+ cumulative
   adjustment, meaning the value reflects section 4 as much as observed prices.
+- **Contributor level shift, with corroboration** — one provider moving its
+  own median more than 25% day over day is flagged whichever way the index
+  moved, because the panel-shaped defences cannot see it. From 1.1.0 the flag
+  also says what kind of move it was. If at least two other contributors moved
+  10% or more the same way it is a *corroborated repricing* and reads as
+  information. If none did it is *uncorroborated* — one contributor's move and
+  not the market's, a glitch or an attack until shown otherwise. With fewer
+  than three peers present on both days the screen stands down and says it
+  cannot tell, which is a different statement from either. It flags and never
+  gates: a venue is entitled to reprice.
 
 ## 9. Revisions
 

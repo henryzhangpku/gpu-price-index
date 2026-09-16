@@ -446,6 +446,81 @@ from the other side of the first real change.
 
 ---
 
+## 12. What the estimator's oldest objection turned out to be worth, measured
+
+Methodology 1.1.0 was built from an itemised comparison against the one other
+open-source compute benchmark with a published estimator. Four of its items
+changed a number; this records what each one found when it met the archive.
+
+**The median-versus-mean argument has a measurable answer here, and it is
+not the textbook one.** The objection to a weighted mean is that a provider at
+the edge of the panel drags it in proportion to its weight. The objection to a
+median is that it depends only on the vote straddling the middle, so the rest
+of the panel can move without moving the index. Both are true, so the position
+between them became a parameter -- an interquantile mean over spread votes,
+with the width of the central band published with the value -- and
+`gpuidx robustness` recomputes every fixing at every setting. Across 21
+fixings, closing the band cut the worst day-over-day move on the
+eleven-provider `GIX-H100` from 17.5% to 5.0%, exactly as the objection
+predicts. On the seven-provider `GIX-H200` it *raised* the worst move from
+19.5% to 54.6%, and on the six-provider `GIX-B200` from 14.3% to 18.5%. With
+six or seven contributors the median is not the stable estimator; it is the
+one that jumps between two venues on the day one of them drops out, and the
+mean's exposure to an edge provider is the smaller problem. 1.1.0 publishes at
+band 1.0 -- the weighted mean, unchanged -- with the dial exposed and the
+evidence for leaving it there printed on demand. The trigger for moving it is
+panel width, which is a number.
+
+**A screen that never fires can still be worth having, and one that fires
+thirty-six times a day was missing.** Checking for "from $X" teaser rates
+found none in any of the four live feeds; the field and the screen exist so
+that one can only ever enter labelled. Checking product identity found
+seventeen Shadeform `A100` listings at 40 GB priced into the 80 GB index on
+the 16 September snapshot, plus three H100 NVL cards adjusted into the SXM
+index as if they were the same die in a different slot, which they are not.
+On the first live collection under 1.1.0 the identity screen rejected 36
+observations. No prior check could have seen any of them: a 40 GB A100 at a
+40 GB price is a perfectly plausible 80 GB quote, sits inside every band, and
+moves the fixing a little in the direction nobody would question.
+
+**The first draft of the identity screen was wrong in a way the archive
+caught.** It read a disclosed VRAM figure as per-card, and DataCrunch reports
+the node total -- 160 GB for a 2x H100 -- so every multi-GPU DataCrunch
+listing was rejected for being honest. The screen now accepts a listing if the
+figure matches the contract under *either* convention, because the ambiguity
+is the venue's and a screen that guesses one convention is a screen that
+rejects the other. Recorded because it is the general shape of a
+normalisation bug: a rule that is right about one feed's conventions and
+silently wrong about another's, visible only by diffing the contributor list
+before and after.
+
+**Population accounting fails closed, and the archive is on the wrong side of
+it.** A marketplace's one vote is a median across its book, and a median over
+three boxes from one host is that host's rate card. The floor -- four machines,
+three hosts, per venue per index -- needs the book to *identify* its sellers,
+and the Vast.ai adapter recorded no machine or host ids before 1.1.0. So a
+1.1.0 recomputation of any earlier snapshot holds Vast.ai out of every index
+as an unproven book, and prices `GIX-H100` at $3.19 where 1.0.0 printed
+$3.34. That is not what those days would have published and it is not a
+restatement; it is the fail-closed behaviour doing what it says. The live
+Vast.ai API does return both ids -- a dry collection on 16 September seated
+the venue in every index with no floor flag, and printed $3.32 against the
+morning's $3.34 -- so the first scheduled 1.1.0 fixing is the first day the
+book can prove its population. The first draft decided whether a row was a
+book by whether it carried an id, which would have let an adapter that
+stopped recording ids turn the marketplace back into a rate card, exempt from
+the floor, silently. A book is a book by source.
+
+**The general lesson.** Every one of these was found by recomputing the same
+day under two versions and reading the diff of the contributor list, which is
+only possible because a version is a registered behaviour (finding #11) and
+because the tape names the inputs each value came from. The estimator change
+that started the work moved nothing; the screens it was bundled with moved
+thirty-six observations a day. The interesting result was not the one the
+comparison was about.
+
+---
+
 ## Reproducing
 
 ```bash

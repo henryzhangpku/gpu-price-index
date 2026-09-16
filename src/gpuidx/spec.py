@@ -186,6 +186,78 @@ def node_size_factor(
     return curve[-1][1] if curve else 1.00
 
 
+# ---------------------------------------------------------------------------
+# Product identity
+# ---------------------------------------------------------------------------
+#
+# An alias match says the venue's string names this GPU. It does not say the
+# venue is selling this GPU: the same die ships in variants that are different
+# products at different prices, and a listing whose own label or stated specs
+# identify one of those is not evidence about the benchmark good.
+#
+# Two screens, both citing the observation that motivated them:
+#
+# * A disclosed per-GPU VRAM more than ``VRAM_TOLERANCE`` from the contract's
+#   rejects the listing. Venues disclose VRAM as a per-GPU figure or as the
+#   node total; a total is recognised as such when it is a whole multiple of
+#   the GPU count and implausible for one card.
+# * A per-contract label rule set, for variants a venue names but does not
+#   spec, so the rejection carries the reason rather than "unmatched".
+
+#: Per-GPU VRAM disagreeing with the contract by more than this is a different
+#: product. Wide enough for B200 listed as 192 GB against a 180 GB contract
+#: (the raw HBM3e figure against the usable one), narrow enough to refuse an
+#: A100 40 GB against the 80 GB contract.
+VRAM_TOLERANCE = 0.10
+
+class IdentityRule(BaseModel):
+    """A label pattern that identifies a different product under a matched name."""
+
+    model_config = {"frozen": True}
+
+    #: Lower-cased token that must appear in the venue's model string, on a
+    #: word boundary after the usual separators are collapsed.
+    token: str
+    #: What the token identifies, and why it is not the benchmark good.
+    reason: str
+    #: The observation that motivated the rule -- source, date, and figure.
+    cited: str
+
+
+PRODUCT_IDENTITY_RULES: dict[str, tuple[IdentityRule, ...]] = {
+    "GIX-H100": (
+        IdentityRule(
+            token="nvl",
+            reason=(
+                "H100 NVL is the 94 GB dual-slot PCIe product bridged in pairs, "
+                "not the 80 GB SXM good; it prices as a different card"
+            ),
+            cited="shadeform H100_nvl at 94 GB, 3 listings, 2026-09-16 snapshot",
+        ),
+    ),
+    "GIX-A100": (
+        IdentityRule(
+            token="40gb",
+            reason="A100 40 GB is a distinct SKU that clears well below the 80 GB card",
+            cited=(
+                "shadeform 'A100' at 40 GB, 17 listings, and datacrunch 'A100 SXM4 "
+                "40GB', 2026-09-16 snapshot -- all of them priced into the 80 GB index"
+            ),
+        ),
+    ),
+}
+
+#: Feeds that are a book of many sellers' asks rather than one seller's rate
+#: card. Their single vote is a median across the book, and the population
+#: floors in ``Gates`` say how many distinct sellers that median must span.
+BOOK_SOURCES: frozenset[str] = frozenset({"vastai"})
+
+#: Bare model strings that name a family rather than a product, and whose
+#: VRAM the venue did not disclose either. Listed, not screened: the alias
+#: match stands, and this is the record of the ambiguity it carries.
+AMBIGUOUS_LABELS = ("A100", "H100", "MI300")
+
+
 # Region is carried for screening rather than adjustment: cross-border price
 # differences reflect power, tax, and latency regimes that a single scalar
 # cannot honestly collapse. Non-benchmark regions are screened out instead.
@@ -340,10 +412,25 @@ METHODOLOGIES: dict[str, Methodology] = {
     # The launch methodology: weighted mean of per-provider medians, no
     # pre-normalisation screens beyond region and the adjustment cap.
     "1.0.0": Methodology(version="1.0.0"),
+    # 2026-09-16. The screens a broad panel turned out to need, and the
+    # estimator's position made a parameter. See METHODOLOGY §6 and FINDINGS
+    # #12 for the numbers behind each choice, in particular why the
+    # robustness band stays at 1.0.
+    "1.1.0": Methodology(
+        version="1.1.0",
+        gates=Gates(min_book_machines=4, min_book_hosts=3),
+        estimator=EstimatorParams(robustness_band=1.0, sigma_floor=0.03, sigma_ceiling=0.50),
+        screens=Screens(
+            exclude_from_floor=True,
+            product_identity=True,
+            require_quoted_currency=True,
+            jump_corroboration=True,
+        ),
+    ),
 }
 
 #: The methodology new fixings are published under.
-CURRENT_METHODOLOGY = METHODOLOGIES["1.0.0"]
+CURRENT_METHODOLOGY = METHODOLOGIES["1.1.0"]
 
 #: Retained because most call sites only care about the gates. Always the
 #: current methodology gates -- never construct ``Gates()`` directly for

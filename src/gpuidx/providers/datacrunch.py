@@ -68,6 +68,7 @@ class DataCrunch(Provider):
                         gpu_model=str(model),
                         gpu_count=int(count),
                         usd_per_hour_total=price,
+                        currency="USD",
                         commitment=commitment,
                         form_factor=self.infer_form_factor(model, desc),
                         interconnect=self.infer_interconnect(model, desc, p2p),

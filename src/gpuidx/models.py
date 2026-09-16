@@ -63,6 +63,17 @@ class Interconnect(StrEnum):
     UNKNOWN = "unknown"
 
 
+class PriceKind(StrEnum):
+    """What kind of statement the venue's number is."""
+
+    #: A rate for the configuration described: this many GPUs, this price.
+    QUOTED = "quoted"
+    #: A "from $X" teaser -- the floor of an unstated configuration menu. Not
+    #: a rate for any configuration, so it can identify a venue's presence in
+    #: the market but never price it.
+    FROM_FLOOR = "from_floor"
+
+
 class RawObservation(BaseModel):
     """A price as the venue stated it, before any interpretation."""
 
@@ -70,7 +81,15 @@ class RawObservation(BaseModel):
     source_sku: str
     gpu_model: str
     gpu_count: int
+    #: Named before the record carried a currency, and kept for the archived
+    #: snapshots that use it. Read it with ``currency``: it is the venue's
+    #: number in the venue's currency, and USD only when ``currency`` says so.
     usd_per_hour_total: float
+    #: ISO 4217, as the venue quoted it. Recorded, never assumed: an adapter
+    #: that cannot say what currency a venue bills in must not write "USD".
+    currency: str = "USD"
+    #: A rate for the stated configuration, or a teaser floor.
+    price_kind: PriceKind = PriceKind.QUOTED
     commitment: Commitment
     form_factor: FormFactor = FormFactor.UNKNOWN
     interconnect: Interconnect = Interconnect.UNKNOWN

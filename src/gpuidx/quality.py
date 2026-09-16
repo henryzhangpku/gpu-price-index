@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from .estimator import ProviderAggregate
 from .models import NormalizedQuote, QualityFlag, RawObservation
-from .spec import Gates
+from .spec import CURRENT_METHODOLOGY, Gates, Methodology
 from .store import Store
 
 #: A feed whose entire content is byte-identical for this many consecutive
@@ -205,12 +205,25 @@ def check_adjustment_load(quotes: list[NormalizedQuote]) -> list[QualityFlag]:
 #: days of archive that exist today.
 PROVIDER_LEVEL_SHIFT = 0.25
 
+#: A move this large in another contributor, in the same direction, counts as
+#: corroboration that a jump is a repricing rather than a glitch.
+CORROBORATING_MOVE = 0.10
+
+#: How many other contributors must have moved that far, that way, before a
+#: jump is called corroborated.
+CORROBORATIONS_REQUIRED = 2
+
+#: Below this many other contributors present on both days the screen cannot
+#: tell corroborated from uncorroborated and says so instead of guessing.
+CORROBORATION_MIN_PEERS = 3
+
 
 def check_provider_level_shift(
     store: Store,
     index_code: str,
     index_date: date,
     aggregates: list[ProviderAggregate],
+    methodology: Methodology = CURRENT_METHODOLOGY,
 ) -> list[QualityFlag]:
     """Flag a single contributor whose own price moved sharply since the last fixing.
 
@@ -228,6 +241,14 @@ def check_provider_level_shift(
 
     This does not block publication, for the same reason the index-level check
     does not: a venue is entitled to reprice. It demands that someone looks.
+
+    With ``screens.jump_corroboration`` on, it also says *what* to look for.
+    One contributor moving 25% while two others moved 10% the same way is a
+    market repricing and the flag says so; the same move with the rest of the
+    panel flat is a glitch or an attack until shown otherwise, and the flag
+    says that instead. With too few peers present on both days to judge, the
+    screen stands down and says it cannot tell, which is a different
+    statement from either.
     """
     previous = store.previous_published(index_code, index_date)
     if previous is None:
@@ -244,26 +265,81 @@ def check_provider_level_shift(
     if not prior:
         return []
 
-    flags: list[QualityFlag] = []
+    # Every contributor's own move, for the corroboration count.
+    moves: dict[str, float] = {}
     for agg in aggregates:
         if agg.screened_out:
             continue
         before = prior.get(agg.provider)
         if not before or before <= 0:
             continue
-        move = (agg.price - before) / before
+        moves[agg.provider] = (agg.price - before) / before
+
+    corroborate = methodology.screens.jump_corroboration
+
+    flags: list[QualityFlag] = []
+    for agg in aggregates:
+        if agg.screened_out or agg.provider not in moves:
+            continue
+        move = moves[agg.provider]
         if abs(move) <= PROVIDER_LEVEL_SHIFT:
             continue
-        flags.append(
-            QualityFlag(
-                severity="warn",
-                index_code=index_code,
-                code="provider_level_shift",
-                detail=(
-                    f"{agg.provider} moved {move:+.1%} from ${before:.3f} "
-                    f"({previous['index_date']}) to ${agg.price:.3f}; exceeds the "
-                    f"{PROVIDER_LEVEL_SHIFT:.0%} contributor review threshold"
-                ),
-            )
+        before = prior[agg.provider]
+        base = (
+            f"{agg.provider} moved {move:+.1%} from ${before:.3f} "
+            f"({previous['index_date']}) to ${agg.price:.3f}; exceeds the "
+            f"{PROVIDER_LEVEL_SHIFT:.0%} contributor review threshold"
         )
+        if not corroborate:
+            flags.append(
+                QualityFlag(
+                    severity="warn", index_code=index_code,
+                    code="provider_level_shift", detail=base,
+                )
+            )
+            continue
+
+        peers = {p: m for p, m in moves.items() if p != agg.provider}
+        if len(peers) < CORROBORATION_MIN_PEERS:
+            flags.append(
+                QualityFlag(
+                    severity="warn", index_code=index_code,
+                    code="provider_level_shift",
+                    detail=(
+                        f"{base}; only {len(peers)} other contributors present on both "
+                        "days, too few to say whether the panel moved with it"
+                    ),
+                )
+            )
+            continue
+
+        same_way = [
+            p for p, m in peers.items()
+            if abs(m) >= CORROBORATING_MOVE and (m > 0) == (move > 0)
+        ]
+        if len(same_way) >= CORROBORATIONS_REQUIRED:
+            flags.append(
+                QualityFlag(
+                    severity="info", index_code=index_code,
+                    code="provider_level_shift_corroborated",
+                    detail=(
+                        f"{base}; corroborated by {len(same_way)} of {len(peers)} others "
+                        f"moving {CORROBORATING_MOVE:.0%}+ the same way "
+                        f"({', '.join(sorted(same_way))}), so this reads as a repricing"
+                    ),
+                )
+            )
+        else:
+            flags.append(
+                QualityFlag(
+                    severity="warn", index_code=index_code,
+                    code="provider_level_shift_uncorroborated",
+                    detail=(
+                        f"{base}; {len(same_way)} of {len(peers)} others moved "
+                        f"{CORROBORATING_MOVE:.0%}+ the same way, so this is one "
+                        "contributor's move and not the market's -- a glitch or an "
+                        "attack until shown otherwise"
+                    ),
+                )
+            )
     return flags
