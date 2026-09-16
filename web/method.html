@@ -130,6 +130,14 @@
         <span class="label">Wait for a quiet day</span>
         <p>Gates are evaluated every day. A thin day withholds rather than printing a number nobody could defend.</p>
       </div>
+      <div class="card">
+        <span class="label">Sit at the edge of the panel</span>
+        <p>The level is an interquantile mean over spread votes, and the width of the band is a published parameter: 1.0 is the weighted mean, near 0 the weighted median. It publishes at 1.0 today because, measured across the archive, a narrower band is <em>less</em> stable on a six-provider panel &mdash; the median jumps between venues on the day one drops out.</p>
+      </div>
+      <div class="card">
+        <span class="label">Rename the product</span>
+        <p>A listing whose own label or stated VRAM identifies a different variant &mdash; a 40&nbsp;GB A100 into the 80&nbsp;GB index, an NVL card into an SXM one &mdash; is rejected with the reason, not adjusted. Seventeen of them were being priced into one index before the screen existed.</p>
+      </div>
     </div>
   </section>
 
@@ -288,7 +296,7 @@ sigma test undefined -> screen returns
 import {
   loadBundle, showError, initTheme, renderBoard,
   fmtUsd, fmtPct, longDate, escapeHtml
-} from "./app.js?v=09d5b518";
+} from "./app.js?v=e1d590eb";
 
 initTheme();
 
@@ -352,6 +360,8 @@ try {
       p: "A market this dispersed is not one market, and a central estimate would misrepresent it." },
     { k: "Single-provider weight", v: `≤ ${fmtPct(g.max_provider_weight_share)}`,
       p: "Enforced by capping rather than by refusing, so no published value can rest on one venue's view." },
+    { k: "Marketplace population", v: `≥ ${g.min_book_machines} machines · ${g.min_book_hosts} hosts`,
+      p: "A book's one vote is a median across its sellers. Below this many distinct machines and hosts the venue is held out of that index: a median of three boxes from one host is that host's rate card wearing a marketplace's name." },
   ].map((c) => `<div class="card">
       <span class="label">${escapeHtml(c.k)}</span>
       <p class="mono" style="font-size:20px;color:var(--accent);margin-bottom:10px;">${escapeHtml(c.v)}</p>

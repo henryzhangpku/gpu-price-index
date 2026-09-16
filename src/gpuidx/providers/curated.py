@@ -28,7 +28,7 @@ from pathlib import Path
 
 import httpx
 
-from ..models import Commitment, FormFactor, Interconnect, RawObservation, Tier
+from ..models import Commitment, FormFactor, Interconnect, PriceKind, RawObservation, Tier
 from .base import Provider
 
 CATALOG_PATH = Path(__file__).resolve().parents[3] / "data" / "curated_rate_cards.json"
@@ -66,6 +66,9 @@ class Curated(Provider):
                     gpu_model=entry["gpu_model"],
                     gpu_count=int(entry["gpu_count"]),
                     usd_per_hour_total=float(entry["usd_per_hour_total"]),
+                    # A curated entry says what it is or it is not curated.
+                    currency=str(entry.get("currency", "USD")),
+                    price_kind=PriceKind(entry.get("price_kind", "quoted")),
                     commitment=Commitment(entry.get("commitment", "on_demand")),
                     form_factor=FormFactor(entry.get("form_factor", "unknown")),
                     interconnect=Interconnect(entry.get("interconnect", "unknown")),

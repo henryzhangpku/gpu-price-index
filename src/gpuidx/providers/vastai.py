@@ -79,6 +79,7 @@ class VastAI(Provider):
                         gpu_model=str(gpu_name),
                         gpu_count=int(gpus),
                         usd_per_hour_total=float(dph),
+                        currency="USD",
                         commitment=Commitment.ON_DEMAND,
                         form_factor=self.infer_form_factor(gpu_name),
                         interconnect=self.infer_interconnect(gpu_name),
@@ -92,6 +93,12 @@ class VastAI(Provider):
                             "datacenter": offer.get("datacenter"),
                             "verified": offer.get("verified"),
                             "dph_base": offer.get("dph_base"),
+                            # Population accounting. A book is only evidence
+                            # about a market if it can say how many distinct
+                            # sellers it holds; without these two the venue
+                            # is held out by the population floor.
+                            "machine_id": offer.get("machine_id"),
+                            "host_id": offer.get("host_id"),
                         },
                     )
                 )

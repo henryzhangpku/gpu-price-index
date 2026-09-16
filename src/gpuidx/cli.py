@@ -33,7 +33,7 @@ from .implied import DEFAULT_LADDERS, expectation_sensitivity, fetch_distributio
 from .pipeline import run_daily
 from .reproduce import coverage, estimate_from_archive, rebuild, verify
 from .sensitivity import exposure, exposure_all
-from .spec import CONTRACTS, DEFAULT_GATES
+from .spec import CONTRACTS, CURRENT_METHODOLOGY, DEFAULT_GATES
 from .store import Store
 
 #: Repository root, where snapshots/ and series/ live.
@@ -87,15 +87,18 @@ def publish(
                   box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
     table.add_column("index")
     table.add_column("value", justify="right")
+    table.add_column("± band", justify="right")
     table.add_column("prov", justify="right")
     table.add_column("obs", justify="right")
     table.add_column("disp", justify="right")
     table.add_column("status")
     for code, value in report.values.items():
         published = value.status.value == "published"
+        est = report.estimates.get(code)
         table.add_row(
             code,
             _fmt(value.value),
+            f"[dim]±{est.band:.2f}[/]" if published and est and est.band is not None else "--",
             str(value.provider_count),
             str(value.observation_count),
             f"{value.dispersion:.3f}" if value.dispersion is not None else "--",
@@ -146,13 +149,22 @@ def show(
         caption=f"[dim]{subtitle}[/]" if subtitle else None,
         caption_justify="left",
     )
-    for column in ("date", "value", "rev", "prov", "obs", "disp", "status"):
+    for column in ("date", "value", "± band", "rev", "prov", "obs", "disp", "status"):
         table.add_column(column, justify="right" if column != "status" else "left", no_wrap=True)
     for row in rows:
         published = row["status"] == "published"
+        # The band is the robust sigma of the panel in dollars: how much the
+        # contributors disagree about the level, printed beside it so that a
+        # day-over-day move can be read against the noise at a glance.
+        band = (
+            f"[dim]±{row['dispersion'] * row['value']:.2f}[/]"
+            if published and row["dispersion"] is not None and row["value"]
+            else "[dim]--[/]"
+        )
         table.add_row(
             row["index_date"],
             f"[bold cyan]{_fmt(row['value'])}[/]" if published else "[dim]--[/]",
+            band,
             str(row["revision"]) if row["revision"] else "[dim]0[/]",
             str(row["provider_count"]),
             str(row["observation_count"]),
@@ -1057,15 +1069,23 @@ def explain_cmd(
         console.print(f"[yellow]inputs unavailable: {snapshot or 'no snapshot named'}[/]")
         raise typer.Exit(1)
 
+    from .normalize import hold_out_thin_books
+    from .spec import methodology_for
+
+    # Under the version the row names, as verify does; explaining a 1.0.0
+    # value with 1.1.0 screens would narrate a number that was never printed.
+    methodology = methodology_for(row.get("methodology_version") or "") or CURRENT_METHODOLOGY
     observations = read_snapshot(path).observations
     informative, admin_flags = drop_administered(observations)
-    quotes, reject_flags = normalize_all(informative)
+    populated, book_flags = hold_out_thin_books(informative, methodology)
+    admin_flags = admin_flags + book_flags
+    quotes, reject_flags = normalize_all(populated, methodology)
     mine = [q for q in quotes if q.index_code == index_code]
-    est = run_estimate(index_code, mine, DEFAULT_GATES)
+    est = run_estimate(index_code, mine, methodology)
 
     published = row["status"] == "published"
     headline = _fmt(float(row["value"])) if row["value"] else "withheld"
-    exposure_row = exposure(index_code, mine, DEFAULT_GATES)
+    exposure_row = exposure(index_code, mine, methodology.gates)
 
     def stage(number: int, title: str, rationale: str) -> None:
         """A numbered stage with the decision it embodies, not just its output."""
@@ -1378,6 +1398,123 @@ def screen_cmd(
         console.print(f"  [bold]nothing screened.[/] [dim]All {len(kept)} sit inside the band.[/]")
         console.print("  [dim]That is the usual outcome. The screen exists for the day it is not.[/]")
     console.print()
+
+
+@app.command("robustness")
+def robustness_cmd(
+    index_code: str = typer.Argument("GIX-H100"),
+    bands: str = typer.Option(
+        "1.0,0.8,0.667,0.5,0.333,0.2,0.05",
+        help="Comma-separated robustness bands to evaluate",
+    ),
+) -> None:
+    """Show what each robustness band would have published across the archive.
+
+    The estimator's position between the weighted mean (band 1.0) and the
+    weighted median (band near 0) is a published parameter. This recomputes
+    every live fixing of one index under each band and prints the level, its
+    day-over-day jitter, and the worst single move -- the evidence the chosen
+    default rests on, so the choice can be argued with numbers rather than
+    with the usual two adjectives.
+    """
+    import statistics
+
+    from .archive import SNAPSHOT_DIR, live_tape_values, read_snapshot
+    from .normalize import prepare_quotes
+    from .spec import methodology_for
+
+    try:
+        chosen = [float(b) for b in bands.split(",") if b.strip()]
+    except ValueError as exc:
+        console.print(f"[red]bad band list: {exc}[/]")
+        raise typer.Exit(2) from exc
+
+    rows = sorted(
+        (day, row)
+        for (code, day), row in live_tape_values(ARCHIVE_ROOT).items()
+        if code == index_code
+    )
+    if not rows:
+        console.print(f"[yellow]no fixings for {index_code}[/]")
+        raise typer.Exit(1)
+
+    cache: dict[str, list] = {}
+    series: dict[float, list[float]] = {b: [] for b in chosen}
+    skipped = 0
+    for _day, row in rows:
+        name = (row.get("snapshot") or "").strip()
+        path = ARCHIVE_ROOT / SNAPSHOT_DIR / name
+        base = methodology_for(row.get("methodology_version") or "")
+        if not name or not path.exists() or base is None:
+            skipped += 1
+            continue
+        if name not in cache:
+            cache[name] = read_snapshot(path).observations
+        quotes, _ = prepare_quotes(cache[name], base)
+        mine = [q for q in quotes if q.index_code == index_code]
+        for band in chosen:
+            params = base.estimator.model_copy(update={"robustness_band": band})
+            est = estimate_for_dial(index_code, mine, base.model_copy(update={"estimator": params}))
+            if est.passed and est.value is not None:
+                series[band].append(est.value)
+
+    current = CURRENT_METHODOLOGY.estimator.robustness_band
+    console.print(
+        Panel(
+            f"[bold]{index_code}[/]  ·  {len(rows)} live fixings"
+            + (f", {skipped} without inputs" if skipped else "")
+            + f"\n[dim]* = where methodology {CURRENT_METHODOLOGY.version} publishes "
+            f"(band {current:.3g})[/]",
+            border_style="cyan",
+            expand=False,
+        )
+    )
+
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    for column, justify in (
+        ("band", "right"), ("reads as", "left"), ("level", "right"),
+        ("vs 1.0", "right"), ("med d/d", "right"), ("worst d/d", "right"), ("n", "right"),
+    ):
+        table.add_column(column, justify=justify, no_wrap=True)
+
+    reference = None
+    for band in chosen:
+        values = series[band]
+        if not values:
+            table.add_row(f"{band:.3g}", "", "--", "--", "--", "--", "0")
+            continue
+        moves = [abs(values[i] / values[i - 1] - 1) for i in range(1, len(values))]
+        level = statistics.mean(values)
+        if reference is None:
+            reference = level
+        label = (
+            "weighted mean" if band >= 1.0
+            else "weighted median" if band <= 0.05
+            else f"middle {band:.0%}"
+        )
+        marker = " [cyan]*[/]" if abs(band - current) < 1e-9 else ""
+        table.add_row(
+            f"{band:.3g}",
+            label + marker,
+            _fmt(level),
+            f"{level / reference - 1:+.1%}",
+            f"{statistics.median(moves):.2%}" if moves else "--",
+            f"{max(moves):.1%}" if moves else "--",
+            str(len(values)),
+        )
+    console.print()
+    console.print(table)
+    console.print(
+        "  [dim]A narrower band is less moved by an edge provider and more moved by\n"
+        "  membership: with six or seven contributors the median jumps between two\n"
+        "  venues on the day one of them drops out. Read the worst move, not the median.[/]"
+    )
+
+
+def estimate_for_dial(index_code: str, quotes, methodology):
+    from .estimator import estimate as run_estimate
+
+    return run_estimate(index_code, quotes, methodology)
 
 
 @app.command("weights")

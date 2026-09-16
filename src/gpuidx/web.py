@@ -38,7 +38,7 @@ from typing import Any
 
 from .archive import SNAPSHOT_DIR, list_snapshots, read_snapshot, read_tape
 from .estimator import DEGENERATE_RATIO_TOLERANCE, OUTLIER_SIGMAS, Estimate, estimate
-from .models import NormalizedQuote
+from .models import NormalizedQuote, QualityFlag
 from .normalize import prepare_quotes
 from .sensitivity import exposure
 from .spec import (
@@ -49,8 +49,10 @@ from .spec import (
     FORM_FACTOR_FACTORS,
     INTERCONNECT_FACTORS,
     MAX_TOTAL_ADJUSTMENT,
+    METHODOLOGIES,
     TIER_WEIGHTS,
     Gates,
+    methodology_for,
     node_size_factor,
 )
 
@@ -120,7 +122,12 @@ def build_meta(root: Path, gates: Gates) -> dict[str, Any]:
             "max_provider_weight_share": gates.max_provider_weight_share,
             "review_move_threshold": gates.review_move_threshold,
             "require_tier1": gates.require_tier1,
+            "min_book_machines": gates.min_book_machines,
+            "min_book_hosts": gates.min_book_hosts,
         },
+        "estimator": CURRENT_METHODOLOGY.estimator.model_dump(),
+        "screens": CURRENT_METHODOLOGY.screens.model_dump(),
+        "known_versions": sorted(METHODOLOGIES),
         "tiers": [
             {
                 "tier": tier,
@@ -175,6 +182,12 @@ def build_series(root: Path) -> dict[str, Any]:
                 "provider_count": _as_int(row.get("provider_count")),
                 "observation_count": _as_int(row.get("observation_count")),
                 "dispersion": _as_float(row.get("dispersion")),
+                "band": (
+                    _as_float(row.get("dispersion")) * _as_float(row.get("value"))
+                    if _as_float(row.get("dispersion")) is not None
+                    and _as_float(row.get("value")) is not None
+                    else None
+                ),
                 "withheld_reason": row.get("withheld_reason") or None,
                 "methodology_version": row.get("methodology_version"),
                 "published_at": row.get("published_at"),
@@ -233,6 +246,7 @@ def _estimate_rows(est: Estimate) -> dict[str, Any]:
 
     return {
         "value": est.value,
+        "band": est.band,
         "dispersion": est.dispersion,
         "passed": est.passed,
         "failed_gates": est.failed_gate_summary,
@@ -291,28 +305,44 @@ def build_latest(root: Path, gates: Gates) -> dict[str, Any]:
         return {"index_date": last_date, "indices": {}, "run": None}
 
     archived = read_snapshot(snapshot_path)
-    quotes, flags = prepare_quotes(archived.observations)
-
-    by_index: dict[str, list[NormalizedQuote]] = {code: [] for code in CONTRACTS}
-    for quote in quotes:
-        by_index[quote.index_code].append(quote)
 
     published_by_code = {
         row["index_code"]: row
         for row in sorted(rows_for_date, key=lambda r: _as_int(r.get("revision")))
     }
 
+    # Recompute under the version the tape row was published beneath, as
+    # verify does, so the board never shows today's rules disagreeing with a
+    # value that was correct under yesterday's.
+    versions = {
+        row.get("methodology_version") or CURRENT_METHODOLOGY.version
+        for row in published_by_code.values()
+    } or {CURRENT_METHODOLOGY.version}
+    prepared: dict[str, tuple[list[NormalizedQuote], list[QualityFlag]]] = {}
+    for version in versions:
+        methodology = methodology_for(version) or CURRENT_METHODOLOGY
+        prepared[version] = prepare_quotes(archived.observations, methodology)
+    run_version = max(versions)
+    quotes, flags = prepared[run_version]
+
     indices: dict[str, Any] = {}
-    for code, index_quotes in by_index.items():
-        est = estimate(code, index_quotes, gates)
-        exp = exposure(code, index_quotes, gates)
+    for code in CONTRACTS:
         tape_row = published_by_code.get(code, {})
+        version = tape_row.get("methodology_version") or run_version
+        methodology = methodology_for(version) or CURRENT_METHODOLOGY
+        if gates is not CURRENT_METHODOLOGY.gates:
+            methodology = methodology.model_copy(update={"gates": gates})
+        index_quotes = [q for q in prepared[version][0] if q.index_code == code]
+        est = estimate(code, index_quotes, methodology)
+        exp = exposure(code, index_quotes, methodology.gates)
 
         indices[code] = {
             "index_code": code,
             "display_name": CONTRACTS[code].display_name,
             "contract": CONTRACTS[code].describe(),
             "published_value": _as_float(tape_row.get("value")),
+            "band": est.band,
+            "methodology_version": version,
             "status": tape_row.get("status", "withheld"),
             "withheld_reason": tape_row.get("withheld_reason") or None,
             "estimate": _estimate_rows(est),

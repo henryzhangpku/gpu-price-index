@@ -129,6 +129,7 @@ export function renderBoard(latest, { onSelect = null, selected = null } = {}) {
                 data-code="${code}" ${onSelect ? 'tabindex="0"' : ""}>
       <td><span class="code">${code}</span></td>
       <td class="r">${priceCell}</td>
+      <td class="r num">${est.band !== null && est.band !== undefined && published ? `<span class="band" title="robust sigma of the panel, in dollars">±${fmtNum(est.band, 2)}</span>` : ""}</td>
       <td class="r num">${contributing}${screened ? `<span style="color:var(--screened)"> +${screened}</span>` : ""}</td>
       <td class="r num">${est.providers.reduce((n, p) => n + (p.screened_out ? 0 : p.quote_count), 0)}</td>
       <td class="r num">${fmtNum(est.dispersion)}</td>
@@ -140,6 +141,7 @@ export function renderBoard(latest, { onSelect = null, selected = null } = {}) {
     <thead><tr>
       <th>index</th>
       <th class="r">fixing</th>
+      <th class="r" title="how much the contributors disagree about the level">band</th>
       <th class="r">providers</th>
       <th class="r">obs</th>
       <th class="r">dispersion</th>

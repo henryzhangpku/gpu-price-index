@@ -65,6 +65,7 @@ class Shadeform(Provider):
                     gpu_model=str(gpu_type),
                     gpu_count=int(num_gpus),
                     usd_per_hour_total=float(cents) / 100.0,
+                    currency="USD",
                     commitment=Commitment.ON_DEMAND,
                     form_factor=self.infer_form_factor(interconnect_raw, str(gpu_type)),
                     interconnect=self.infer_interconnect(

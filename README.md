@@ -103,20 +103,24 @@ flowchart TB
 
     OBS --> A{"administered?"}
     A -- yes --> DROP[["discarded"]]
-    A -- no --> B{"matches a contract?"}
+    A -- no --> BK{"marketplace book<br/>with enough sellers?"}
+    BK -- "too few, or unproven" --> HOLD[["venue held out of that index"]]
+    BK -- "yes / not a book" --> B{"matches a contract?"}
     B -- no --> DROP
-    B -- yes --> C{"US region?"}
+    B -- yes --> ID{"the product it names?<br/>a real rate, in USD?"}
+    ID -- "variant · teaser · other currency" --> DROP
+    ID -- yes --> C{"US region?"}
     C -- "disclosed non-US" --> DROP
     C -- "yes / undisclosed" --> D["restate to the benchmark good"]
     D --> E{"over 1.75x cumulative?"}
     E -- yes --> DROP
     E -- no --> NQ["normalised quote"]
 
-    NQ --> MED["collapse to provider medians"]
+    NQ --> MED["collapse to provider medians<br/>+ each provider's own spread"]
     MED --> MAD{"within 3 robust sigma?"}
     MAD -- no --> SCR[["screened, and recorded"]]
     MAD -- yes --> WT["tier weights, 35% cap"]
-    WT --> VAL["weighted mean · candidate value"]
+    WT --> VAL["interquantile mean of spread votes<br/>band = 1.0 today · candidate value ± band"]
 
     VAL --> G{"every enabled gate holds?"}
     G -- yes --> PUB["published"]
@@ -128,10 +132,18 @@ flowchart TB
 | Test | Passes when | Why it exists |
 |---|---|---|
 | administered | the venue's SKUs do not all sit at one fixed ratio | a price that is a function of another price in the sample is a duplicate, not evidence |
+| book population | a marketplace's rows for an index span ≥ 4 machines and ≥ 3 hosts, and say so | a median over three boxes from one host is that host's rate card wearing a marketplace's name; a book that cannot prove its population is held out, not trusted |
 | contract match | the venue's GPU string maps to exactly one benchmark | H100 NVL and H200 are one substring apart; a silent mismatch corrupts two indices |
+| product identity | the listing's own label and disclosed VRAM agree it is the contract's product | seventeen 40 GB A100s were being priced into the 80 GB index; a variant is rejected with the reason, never adjusted |
+| real rate, in USD | not a "from $X" teaser, and quoted in the benchmark's currency | a teaser is the floor of an unstated menu; a euro read as a dollar because the field says so is an assumption, not a record |
 | region | US, or the venue publishes no region at all | power and tax regimes are not a scalar, so region is screened rather than adjusted |
 | 1.75x cap | form factor, fabric, commitment and node size multiply to 1.75 or less | past that the number describes the adjustment schedule rather than the market |
 | 3 robust sigma | the provider sits near the cross-provider median | MAD has a 50% breakdown point, so the screen cannot be defeated by the outlier it catches |
+
+Every one of these is a property of a **registered methodology version**, not
+of the code that happens to be checked out. A value published under 1.0.0 is
+recomputed under 1.0.0 -- no book floor, no identity screen, the plain
+weighted mean -- for as long as the archive exists, and `verify` says so.
 
 Note where `withheld` goes. A refusal to print is written to the tape as a row
 like any other, carrying the gate that caused it. A gap in the series is a
@@ -276,6 +288,15 @@ print the arithmetic for it: the gate that most often decides whether a value
 prints, the test that removes data, and the two rules that decide how much each
 provider counts. `weights` ends by reconciling its own weighted mean against the
 published value, so the explanation is checkable rather than merely plausible.
+
+`robustness` is the one that answers the oldest objection to this estimator.
+The level is an interquantile mean over spread votes, and its band -- 1.0 for
+the weighted mean, near 0 for the weighted median -- is a published parameter.
+The command recomputes every live fixing of an index at each setting and
+prints the level, its day-over-day jitter and its worst single move, which is
+the evidence the published setting rests on. Today that evidence says 1.0: on
+a six-provider panel a narrower band is moved *more*, not less, because the
+median jumps between venues on the day one of them drops out.
 
 ## Demo site
 

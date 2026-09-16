@@ -68,6 +68,7 @@ class RunPod(Provider):
                         gpu_model=str(gpu_id),
                         gpu_count=1,
                         usd_per_hour_total=float(price),
+                        currency="USD",
                         commitment=commitment,
                         form_factor=self.infer_form_factor(gpu_id, display),
                         interconnect=self.infer_interconnect(gpu_id, display),
