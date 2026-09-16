@@ -6,7 +6,8 @@ pricing across about twenty-five clouds — and refuses to answer when the
 market does not support an answer.
 
 [**The daily board**](https://henryzhangpku.github.io/gpu-price-index/) ·
-[methodology](METHODOLOGY.md) · [what the data turned out to show](docs/FINDINGS.md)
+[methodology](METHODOLOGY.md) · [what the data turned out to show](docs/FINDINGS.md) ·
+[related work](docs/RELATED-WORK.md)
 
 ### Why it is harder than averaging some prices
 
