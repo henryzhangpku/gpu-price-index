@@ -29,6 +29,7 @@ from .forward import (
     load_committed_use,
     premium_sensitivity,
 )
+from .implied import DEFAULT_LADDERS, expectation_sensitivity, fetch_distribution
 from .pipeline import run_daily
 from .reproduce import coverage, estimate_from_archive, rebuild, verify
 from .sensitivity import exposure, exposure_all
@@ -534,6 +535,116 @@ def calibrate_cmd() -> None:
             "  the sample is small, several pairs come from one venue, and moving a factor\n"
             "  on this evidence would break the reproduction of every historical value.\n"
         )
+
+
+@app.command("implied")
+def implied_cmd(
+    open_span: float = typer.Option(
+        0.25, help="Assumed width of the open-ended tail brackets, USD"
+    ),
+) -> None:
+    """Read an expected settlement level off prediction-market bracket ladders.
+
+    forward.py refuses to publish a curve because a GPU-hour is not storable,
+    so nothing pins a forward to spot, and the committed-use discount that can
+    be observed bundles expectation with the price of lock-in. A ladder of
+    mutually exclusive brackets does not have that problem: the quotes are a
+    distribution over the settlement value directly.
+
+    What it has instead is thin volume and a book that does not sum to one, so
+    every level here is reported with the reasons not to believe it, and a
+    ladder too poor to quote is withheld.
+    """
+    console.print(
+        Panel(
+            "Brackets are mutually exclusive, so the quotes ARE a distribution over\n"
+            "the settlement value -- no bootstrap from spot, no risk premium assumed.\n"
+            "The catch is liquidity, and it is measurable: a book that does not sum\n"
+            "to 1.00 is quoting spread, and mass in the open tails means the assumed\n"
+            "tail midpoint is doing the work.",
+            title="what this is, and what it is not",
+            expand=False,
+        )
+    )
+
+    curve: list[dict] = []
+    for tenor, slug in DEFAULT_LADDERS:
+        try:
+            dist = fetch_distribution(slug, tenor)
+        except Exception as exc:  # noqa: BLE001 - a dead slug must not kill the command
+            console.print(f"[yellow]{tenor}: could not read ({exc})[/]")
+            continue
+        verdict = dist.assess(open_span)
+        curve.append(verdict)
+
+        settles = verdict["settles"].isoformat() if verdict["settles"] else "?"
+        console.print()
+        console.print(
+            f"[bold]{tenor}[/]  settles {settles}  on the [bold]{dist.source_index}[/]"
+        )
+        if not dist.brackets:
+            console.print("  [yellow]no open brackets -- the event has settled or rolled[/]")
+            continue
+
+        table = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+        for column, justify in (("bracket", "right"), ("midpoint", "right"),
+                                ("implied", "right"), ("volume", "right")):
+            table.add_column(column, justify=justify)
+        for bracket, probability in zip(dist.brackets, dist.probabilities()):
+            table.add_row(
+                bracket.label,
+                f"${bracket.midpoint(open_span):.3f}",
+                f"{probability:.1%}",
+                f"${bracket.volume:,.0f}",
+            )
+        console.print(table)
+
+        console.print(
+            f"  expected [bold]${verdict['expected']:.3f}[/]/GPU-hr"
+            f"   dispersion ${verdict['dispersion']:.3f}"
+            f"   book {verdict['book_sum']:.3f}"
+            f"   tails {verdict['tail_mass']:.0%}"
+        )
+        rows = expectation_sensitivity(dist)
+        spans = "   ".join(
+            f"tail={row['open_span']:.2f}: ${row['expected']:.3f}" for row in rows
+        )
+        console.print(f"  [dim]sensitivity to the tail assumption -- {spans}[/]")
+        for refusal in verdict["refusals"]:
+            console.print(f"  [yellow]withheld: {refusal}[/]")
+
+    usable = [row for row in curve if not row["withheld"] and row["expected"] is not None]
+    console.print()
+    if not usable:
+        console.print(
+            "[yellow]No ladder here is good enough to quote as a level. "
+            "That is the honest answer, not a failure: the market exists but is "
+            "not yet liquid enough to read a curve from.[/]"
+        )
+        return
+
+    shape = Table(title="[bold]market-implied H100 curve[/]", title_justify="left",
+                  box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    for column in ("tenor", "expected", "dispersion", "volume"):
+        shape.add_column(column, justify="left" if column == "tenor" else "right")
+    for row in usable:
+        shape.add_row(
+            row["tenor"],
+            f"${row['expected']:.3f}",
+            f"${row['dispersion']:.3f}",
+            f"${row['volume']:,.0f}",
+        )
+    console.print(shape)
+    if len(usable) >= 2:
+        first, last = usable[0]["expected"], usable[-1]["expected"]
+        console.print(
+            f"[dim]{usable[0]['tenor']} -> {usable[-1]['tenor']}: "
+            f"{(last / first - 1) * 100:+.1f}%[/]"
+        )
+    console.print(
+        "[dim]Levels are an indication of direction. The dispersion is the more "
+        "reliable number: it needs the shape of the book, not its calibration.[/]"
+    )
 
 
 @app.command("forward")
