@@ -1,0 +1,78 @@
+name: implied curve
+
+# A dated record of what the prediction markets expect, taken once a day.
+#
+# The point is the dates, not any one reading. CME lists compute futures on
+# 5 October 2026 against a DIFFERENT index (Silicon Data); these ladders settle
+# against Ornn. Once both exist there will be two curves on the same underlying,
+# built by different constructions from different benchmarks — and that
+# comparison cannot be made retrospectively unless the "before" was written
+# down while it was still the present.
+#
+# So this runs every day whether or not the reading is usable. A file saying
+# every ladder was withheld is evidence about the market; a missing file looks
+# like the job not having run.
+
+on:
+  schedule:
+    # 14:20 UTC, fifteen minutes behind the fixing. Off the hour for the same
+    # reason daily.yml is: :00 is where every scheduled workflow queues up, and
+    # a series that wants a consistent capture time should not compete for it.
+    - cron: "20 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  # Two runs would write the same dated file from different reads.
+  group: implied-curve
+  cancel-in-progress: false
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --frozen
+
+      - name: Read the ladders
+        # Never fails the run on a bad read. These are somebody else's markets
+        # on somebody else's index: an outage there is not a fault here, and a
+        # red cross every time Polymarket rolls an event would train us to
+        # ignore this workflow.
+        continue-on-error: true
+        run: |
+          uv run gpuidx implied --json "implied/$(date -u +%F).json" | tee /tmp/implied.txt
+
+      - name: Commit the record
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add implied
+          if git diff --staged --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "Implied curve read $(date -u +%F)"
+          git push
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '## Market-implied H100 curve'
+            echo '_Prediction-market ladders settling on the **Ornn** index — not ours._'
+            echo '```'
+            cat /tmp/implied.txt 2>/dev/null || echo 'no reading'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

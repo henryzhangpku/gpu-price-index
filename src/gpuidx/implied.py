@@ -181,7 +181,7 @@ class ImpliedDistribution:
 
     def expectation(self, open_span: float = DEFAULT_OPEN_SPAN) -> float:
         return sum(
-            b.midpoint(open_span) * p for b, p in zip(self.brackets, self.probabilities())
+            b.midpoint(open_span) * p for b, p in zip(self.brackets, self.probabilities(), strict=True)
         )
 
     def dispersion(self, open_span: float = DEFAULT_OPEN_SPAN) -> float:
@@ -189,7 +189,7 @@ class ImpliedDistribution:
         mean = self.expectation(open_span)
         var = sum(
             (b.midpoint(open_span) - mean) ** 2 * p
-            for b, p in zip(self.brackets, self.probabilities())
+            for b, p in zip(self.brackets, self.probabilities(), strict=True)
         )
         return math.sqrt(max(0.0, var))
 
