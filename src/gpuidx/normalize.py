@@ -29,13 +29,11 @@ from .models import (
     RawObservation,
 )
 from .spec import (
-    COMMITMENT_FACTORS,
     CONTRACTS,
-    FORM_FACTOR_FACTORS,
-    INTERCONNECT_FACTORS,
-    MAX_TOTAL_ADJUSTMENT,
+    CURRENT_METHODOLOGY,
     US_REGION_TOKENS,
     BenchmarkContract,
+    Methodology,
     node_size_factor,
 )
 
@@ -91,8 +89,15 @@ def _region_ok(obs: RawObservation, contract: BenchmarkContract) -> bool:
     return any(token in blob for token in US_REGION_TOKENS)
 
 
-def normalize(obs: RawObservation) -> NormalizedQuote:
-    """Restate one observation, or raise ``Rejection``."""
+def normalize(
+    obs: RawObservation, methodology: Methodology = CURRENT_METHODOLOGY
+) -> NormalizedQuote:
+    """Restate one observation under a methodology, or raise ``Rejection``.
+
+    The adjustment schedule comes from ``methodology`` rather than from module
+    constants so that a value published under an earlier version can be
+    recomputed under that version's factors, not today's.
+    """
     contract = match_contract(obs)
     if contract is None:
         raise Rejection("unmatched_model", f"no contract for {obs.gpu_model!r}")
@@ -107,7 +112,7 @@ def normalize(obs: RawObservation) -> NormalizedQuote:
     adjustments: list[Adjustment] = []
 
     ff = obs.form_factor if obs.form_factor != FormFactor.UNKNOWN else FormFactor.UNKNOWN
-    factor = FORM_FACTOR_FACTORS[ff]
+    factor = methodology.form_factor_factors[ff]
     if factor != 1.0:
         adjustments.append(
             Adjustment(
@@ -121,7 +126,7 @@ def normalize(obs: RawObservation) -> NormalizedQuote:
     # NVLink and InfiniBand are both benchmark-conforming fabrics; only a
     # degraded fabric attracts an adjustment.
     if ic not in (Interconnect.NVLINK, Interconnect.INFINIBAND):
-        factor = INTERCONNECT_FACTORS[ic]
+        factor = methodology.interconnect_factors[ic]
         if factor != 1.0:
             adjustments.append(
                 Adjustment(
@@ -132,7 +137,7 @@ def normalize(obs: RawObservation) -> NormalizedQuote:
             )
 
     if obs.commitment != Commitment.ON_DEMAND:
-        factor = COMMITMENT_FACTORS[obs.commitment]
+        factor = methodology.commitment_factors[obs.commitment]
         adjustments.append(
             Adjustment(
                 name="commitment",
@@ -141,7 +146,7 @@ def normalize(obs: RawObservation) -> NormalizedQuote:
             )
         )
 
-    factor = node_size_factor(obs.gpu_count, contract.node_size)
+    factor = node_size_factor(obs.gpu_count, contract.node_size, methodology.node_size_curve)
     if factor != 1.0:
         adjustments.append(
             Adjustment(
@@ -158,10 +163,10 @@ def normalize(obs: RawObservation) -> NormalizedQuote:
     for adj in adjustments:
         total *= adj.factor
 
-    if total > MAX_TOTAL_ADJUSTMENT:
+    if total > methodology.max_total_adjustment:
         raise Rejection(
             "over_adjusted",
-            f"cumulative factor {total:.3f} exceeds cap {MAX_TOTAL_ADJUSTMENT}",
+            f"cumulative factor {total:.3f} exceeds cap {methodology.max_total_adjustment}",
         )
 
     return NormalizedQuote(
@@ -180,6 +185,7 @@ def normalize(obs: RawObservation) -> NormalizedQuote:
 
 def prepare_quotes(
     observations: list[RawObservation],
+    methodology: Methodology = CURRENT_METHODOLOGY,
 ) -> tuple[list[NormalizedQuote], list[QualityFlag]]:
     """The single path from raw observations to index inputs.
 
@@ -193,12 +199,13 @@ def prepare_quotes(
     from .calibrate import drop_administered
 
     informative, administered_flags = drop_administered(observations)
-    quotes, rejection_flags = normalize_all(informative)
+    quotes, rejection_flags = normalize_all(informative, methodology)
     return quotes, administered_flags + rejection_flags
 
 
 def normalize_all(
     observations: list[RawObservation],
+    methodology: Methodology = CURRENT_METHODOLOGY,
 ) -> tuple[list[NormalizedQuote], list[QualityFlag]]:
     """Normalise a batch, summarising rejections rather than listing each one.
 
@@ -210,7 +217,7 @@ def normalize_all(
 
     for obs in observations:
         try:
-            quotes.append(normalize(obs))
+            quotes.append(normalize(obs, methodology))
         except Rejection as rej:
             rejections[rej.code] = rejections.get(rej.code, 0) + 1
 

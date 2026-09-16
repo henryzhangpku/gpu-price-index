@@ -518,3 +518,26 @@ The methodology version is stamped onto every published value. A change to any
 factor, gate, or contract definition requires a version bump, so a series can
 be split at a methodology change rather than silently spliced across one.
 Consumers can then tell whether a move was the market or the method.
+
+**A version is a behaviour, not a label.** Every version that has ever
+published a value is registered in `spec.METHODOLOGIES` with the exact gates,
+estimator parameters, screens and adjustment schedule in force under it, and
+`gpuidx verify` recomputes each tape row under the version *it* names. Bumping
+the version therefore leaves the historical series exactly as reproducible as
+it was; a build that has moved on several times still derives a 2026 value
+from its 2026 rules. The only version-related verify failure left is a row
+naming a version the build does not carry, which is the failure it should be.
+
+Two consequences for anyone changing this document:
+
+1. A registered record is history. It is never edited, only succeeded by a
+   new one, because the tape still names it and a recomputation under altered
+   rules would no longer match what was published.
+2. A change with no version bump is caught the same day: the new behaviour
+   fails to reproduce the old rows, and the daily workflow refuses to commit
+   a fixing that fails verify.
+
+Until the registry existed the second consequence was true and the first was
+impossible: the version was compared against one constant, so the first real
+methodology change would have made every prior value unverifiable at once.
+Finding #11 in `docs/FINDINGS.md` records how that was noticed.

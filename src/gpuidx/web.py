@@ -36,7 +36,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import METHODOLOGY_VERSION
 from .archive import SNAPSHOT_DIR, list_snapshots, read_snapshot, read_tape
 from .estimator import DEGENERATE_RATIO_TOLERANCE, OUTLIER_SIGMAS, Estimate, estimate
 from .models import NormalizedQuote
@@ -45,6 +44,7 @@ from .sensitivity import exposure
 from .spec import (
     COMMITMENT_FACTORS,
     CONTRACTS,
+    CURRENT_METHODOLOGY,
     DEFAULT_GATES,
     FORM_FACTOR_FACTORS,
     INTERCONNECT_FACTORS,
@@ -91,7 +91,7 @@ def build_meta(root: Path, gates: Gates) -> dict[str, Any]:
     dates = sorted({row["index_date"] for row in tape})
 
     return {
-        "methodology_version": METHODOLOGY_VERSION,
+        "methodology_version": CURRENT_METHODOLOGY.version,
         "generated_at": datetime.now(UTC).isoformat(),
         "disclaimer": (
             "A demonstration of what a settlement-grade compute benchmark requires. "

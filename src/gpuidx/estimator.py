@@ -25,7 +25,7 @@ import statistics
 from dataclasses import dataclass, field
 
 from .models import GateResult, NormalizedQuote, QualityFlag, Tier
-from .spec import TIER_WEIGHTS, Gates
+from .spec import CURRENT_METHODOLOGY, Gates, Methodology
 
 #: Scale factor making MAD a consistent estimator of sigma for normal data.
 MAD_TO_SIGMA = 1.4826
@@ -215,14 +215,19 @@ def screen_outliers(aggregates: list[ProviderAggregate]) -> list[QualityFlag]:
     return flags
 
 
-def assign_weights(aggregates: list[ProviderAggregate], gates: Gates) -> list[QualityFlag]:
+def assign_weights(
+    aggregates: list[ProviderAggregate],
+    gates: Gates,
+    tier_weights: dict[int, float] | None = None,
+) -> list[QualityFlag]:
     """Weight by waterfall tier, then cap any single provider's influence."""
     live = [a for a in aggregates if not a.screened_out]
     if not live:
         return []
 
+    tier_weights = tier_weights or CURRENT_METHODOLOGY.tier_weights
     for agg in live:
-        agg.weight = TIER_WEIGHTS[int(agg.best_tier)]
+        agg.weight = tier_weights[int(agg.best_tier)]
 
     flags: list[QualityFlag] = []
 
@@ -401,15 +406,38 @@ def venue_concentration_flags(aggregates: list[ProviderAggregate]) -> list[Quali
     ]
 
 
+def _resolve(gates: Gates | Methodology | None) -> Methodology:
+    """Accept either a full methodology or bare gates.
+
+    Most callers only ever cared about the gates, and every test was written
+    against that signature. Bare gates run under the current methodology's
+    estimator and schedule with those gates substituted -- which is what a
+    caller passing gates alone means.
+    """
+    if gates is None:
+        return CURRENT_METHODOLOGY
+    if isinstance(gates, Methodology):
+        return gates
+    if gates == CURRENT_METHODOLOGY.gates:
+        return CURRENT_METHODOLOGY
+    return CURRENT_METHODOLOGY.model_copy(update={"gates": gates})
+
+
 def estimate(
     index_code: str,
     quotes: list[NormalizedQuote],
-    gates: Gates,
+    gates: Gates | Methodology | None = None,
 ) -> Estimate:
-    """Produce a candidate value and evaluate every publication gate."""
+    """Produce a candidate value and evaluate every publication gate.
+
+    ``gates`` may be a full ``Methodology``; a bare ``Gates`` is run under the
+    current methodology with those gates substituted.
+    """
+    methodology = _resolve(gates)
+    gates = methodology.gates
     aggregates = aggregate_by_provider(quotes)
     flags = screen_outliers(aggregates)
-    flags += assign_weights(aggregates, gates)
+    flags += assign_weights(aggregates, gates, methodology.tier_weights)
     flags += venue_concentration_flags(aggregates)
 
     contributing = [a for a in aggregates if not a.screened_out]

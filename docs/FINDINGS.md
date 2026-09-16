@@ -408,6 +408,44 @@ correct.
 
 ---
 
+## 11. The methodology version was a label, and the first change would have proved it
+
+Every published value carries `methodology_version`, and the policy in
+METHODOLOGY §9 and §11 says a series is *split* at a methodology change rather
+than spliced across one. The intent is that a value published under 1.0.0
+stays a 1.0.0 value: reproducible under 1.0.0 rules forever, and never
+silently re-explained by 1.1.0 rules.
+
+The code did not do that. `verify` compared each row's version against a
+single constant and reported any difference as drift, and drift fails the
+check. So the first genuine methodology change -- the one this finding was
+noticed while preparing -- would have made every historical row unverifiable
+at once, and the daily workflow refuses to commit a fixing that fails verify.
+The version could say the rules had changed; nothing could say what the old
+rules *were*.
+
+There is no half-measure here. Verifying old rows under new rules is
+precisely the splice the policy forbids. Skipping old rows is a verify that
+verifies nothing. The only honest option is for a version to *be* a behaviour:
+a registered record of every gate, estimator parameter, screen and adjustment
+factor in force under it, looked up by name and never edited once a value has
+been published beneath it. `verify` now recomputes each row under the record
+it names, and drift means the one thing it should ever have meant -- this
+build cannot say what that version was.
+
+The change is invisible on the board and touched no published number. It was
+a prerequisite: every improvement to the estimator that follows this finding
+would have been blocked by it, not by any property of the market.
+
+**The general lesson.** A version stamp that is only ever compared for
+equality is a label. It becomes a promise only when the thing it names is
+kept, in full, somewhere the code can reach. The gap between the two is
+invisible for exactly as long as nothing changes, which is the same property
+finding #10 had: both halves correct in isolation, and the seam only visible
+from the other side of the first real change.
+
+---
+
 ## Reproducing
 
 ```bash

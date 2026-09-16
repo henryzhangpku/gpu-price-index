@@ -26,9 +26,9 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from . import METHODOLOGY_VERSION
 from .estimator import Estimate
 from .models import IndexStatus, IndexValue, NormalizedQuote, RawObservation
+from .spec import CURRENT_METHODOLOGY
 
 DEFAULT_DB = Path(__file__).resolve().parents[2] / "data" / "gpuidx.db"
 
@@ -182,7 +182,11 @@ class Store:
             cur = conn.execute(
                 "INSERT INTO collection_runs (ingested_at, methodology_version, provider_summary)"
                 " VALUES (?, ?, ?)",
-                (_utc(), METHODOLOGY_VERSION, json.dumps(provider_summary, sort_keys=True)),
+                (
+                    _utc(),
+                    CURRENT_METHODOLOGY.version,
+                    json.dumps(provider_summary, sort_keys=True),
+                ),
             )
             return int(cur.lastrowid)
 
@@ -282,6 +286,7 @@ class Store:
         estimate: Estimate,
         run_id: int | None,
         revision_reason: str | None = None,
+        methodology_version: str | None = None,
     ) -> IndexValue:
         """Append a value (or a withholding) as a new revision."""
         revision = self.next_revision(index_code, index_date)
@@ -299,7 +304,7 @@ class Store:
             observation_count=sum(p.quote_count for p in contributing),
             dispersion=estimate.dispersion,
             withheld_reason=None if published else estimate.failed_gate_summary,
-            methodology_version=METHODOLOGY_VERSION,
+            methodology_version=methodology_version or CURRENT_METHODOLOGY.version,
             published_at=datetime.now(UTC),
             revision_reason=revision_reason,
         )
