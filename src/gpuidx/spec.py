@@ -161,7 +161,16 @@ COMMITMENT_FACTORS: dict[Commitment, float] = {
 }
 
 
-def node_size_factor(observed_gpus: int, benchmark_gpus: int) -> float:
+#: Breakpoints for the node-size adjustment, largest first: an offer of at
+#: least ``min_gpus`` GPUs but short of the benchmark node attracts ``factor``.
+NODE_SIZE_CURVE: tuple[tuple[int, float], ...] = ((4, 0.98), (2, 0.95), (1, 0.92))
+
+
+def node_size_factor(
+    observed_gpus: int,
+    benchmark_gpus: int,
+    curve: tuple[tuple[int, float], ...] = NODE_SIZE_CURVE,
+) -> float:
     """Price a non-conforming node size back to the benchmark node size.
 
     Single and fractional-GPU rentals carry a convenience premium over a full
@@ -171,11 +180,10 @@ def node_size_factor(observed_gpus: int, benchmark_gpus: int) -> float:
     """
     if observed_gpus >= benchmark_gpus:
         return 1.00
-    if observed_gpus >= 4:
-        return 0.98
-    if observed_gpus >= 2:
-        return 0.95
-    return 0.92
+    for min_gpus, factor in curve:
+        if observed_gpus >= min_gpus:
+            return factor
+    return curve[-1][1] if curve else 1.00
 
 
 # Region is carried for screening rather than adjustment: cross-border price
@@ -206,6 +214,8 @@ TIER_WEIGHTS: dict[int, float] = {1: 1.00, 2: 0.60, 3: 0.25}
 class Gates(BaseModel):
     """Conditions all of which must hold before a value may be published."""
 
+    model_config = {"frozen": True}
+
     min_providers: int = 4
     min_observations: int = 8
     #: At least one input must be an executable offer, not a rate card.
@@ -217,6 +227,130 @@ class Gates(BaseModel):
     review_move_threshold: float = 0.15
     #: No single provider may drive more than this share of total weight.
     max_provider_weight_share: float = 0.35
+    #: Minimum distinct machines a marketplace book must have recorded before
+    #: that venue is allowed to price at all. Zero disables the floor.
+    min_book_machines: int = 0
+    #: Minimum distinct hosts behind those machines. One host offering forty
+    #: boxes is one seller, however many rows it produces.
+    min_book_hosts: int = 0
 
 
-DEFAULT_GATES = Gates()
+class EstimatorParams(BaseModel):
+    """Where the estimator sits on the robustness/responsiveness trade-off.
+
+    This used to be a position rather than a parameter: the index was the
+    weighted mean of the per-provider medians, and the standard objection --
+    that a mean is dragged by whatever sits at the edge of the panel -- had to
+    be argued against rather than dialled.
+
+    ``robustness_band`` is that dial. Every contributor casts three votes, at
+    ``p - sigma``, ``p`` and ``p + sigma``, each carrying a third of its
+    weight; the index is the weighted mean of the votes lying in the central
+    ``robustness_band`` of cumulative vote mass. At 1.0 every vote counts and
+    the result is exactly the weighted mean. As the band closes it becomes the
+    weighted median. Neither end is privileged and the chosen value is
+    published with the number.
+    """
+
+    model_config = {"frozen": True}
+
+    #: Central share of vote mass the index is taken over. 1.0 == weighted
+    #: mean; approaching 0 == weighted median.
+    robustness_band: float = 1.0
+    #: Minimum vote spread, as a fraction of the contributor own price.
+    #:
+    #: A contributor whose quotes all agree to the cent would otherwise cast
+    #: three identical votes and claim a certainty it has not demonstrated --
+    #: which is the normal state of a rate card that has not moved in weeks.
+    #: The floor says: no contributor is more certain than this.
+    sigma_floor: float = 0.03
+    #: Ceiling on the spread, same units. Past this the contributor is not
+    #: quoting one price for one good, and an unbounded spread would let it
+    #: vote at both ends of the panel at once.
+    sigma_ceiling: float = 0.50
+
+
+class Screens(BaseModel):
+    """Pre-normalisation screens, each individually switchable by version.
+
+    Kept separate from ``Gates`` because the two answer different questions.
+    A gate asks "may this value be published?"; a screen asks "is this
+    observation evidence about the benchmark good at all?".
+    """
+
+    model_config = {"frozen": True}
+
+    #: Drop "from $X" teaser rates. Such a price is the floor of an unstated
+    #: configuration menu, not a rate for any particular configuration.
+    exclude_from_floor: bool = False
+    #: Drop listings whose own label or stated specs identify a different
+    #: product from the one the model string claims.
+    product_identity: bool = False
+    #: Refuse an observation that does not say what currency it is in, rather
+    #: than assuming USD.
+    require_quoted_currency: bool = False
+    #: A large single-contributor move with no corroboration from the rest of
+    #: the panel is flagged as a probable glitch rather than a repricing.
+    jump_corroboration: bool = False
+
+
+class Methodology(BaseModel):
+    """Everything a published value depends on, other than its inputs.
+
+    THE POINT OF THIS CLASS. Before it existed, ``methodology_version`` was a
+    string stamped onto each row and compared against one constant, so the
+    first real methodology change would have made every historical value
+    unverifiable at once -- ``gpuidx verify`` reports version drift as a
+    failure, and the daily workflow will not commit a fixing that fails it.
+    The policy in METHODOLOGY.md section 9 says a series is split at a
+    methodology change rather than spliced across one; the code could say the
+    version changed but could no longer reproduce either side of the split.
+
+    A version is therefore a *behaviour*, not a label. Each one is registered
+    below with the exact parameters in force under it, and ``verify``
+    recomputes every tape row under the version it was published beneath. A
+    value published in September 2026 still reproduces in 2030 from a build
+    whose defaults have moved several times, and drift now means the only
+    thing it should ever have meant: this build does not know how to reproduce
+    that version.
+    """
+
+    model_config = {"frozen": True}
+
+    version: str
+    gates: Gates = Gates()
+    estimator: EstimatorParams = EstimatorParams()
+    screens: Screens = Screens()
+
+    # -- the adjustment schedule, versioned with everything else -----------
+    form_factor_factors: dict[FormFactor, float] = FORM_FACTOR_FACTORS
+    interconnect_factors: dict[Interconnect, float] = INTERCONNECT_FACTORS
+    commitment_factors: dict[Commitment, float] = COMMITMENT_FACTORS
+    node_size_curve: tuple[tuple[int, float], ...] = NODE_SIZE_CURVE
+    max_total_adjustment: float = MAX_TOTAL_ADJUSTMENT
+    tier_weights: dict[int, float] = TIER_WEIGHTS
+
+
+#: Every methodology this build can reproduce, keyed by published version.
+#:
+#: Entries are append-only and must never be edited once a value has been
+#: published under them. Editing one silently rewrites history: the tape would
+#: still name the version, and the recomputation would no longer match it.
+METHODOLOGIES: dict[str, Methodology] = {
+    # The launch methodology: weighted mean of per-provider medians, no
+    # pre-normalisation screens beyond region and the adjustment cap.
+    "1.0.0": Methodology(version="1.0.0"),
+}
+
+#: The methodology new fixings are published under.
+CURRENT_METHODOLOGY = METHODOLOGIES["1.0.0"]
+
+#: Retained because most call sites only care about the gates. Always the
+#: current methodology gates -- never construct ``Gates()`` directly for
+#: anything that will be published.
+DEFAULT_GATES = CURRENT_METHODOLOGY.gates
+
+
+def methodology_for(version: str) -> Methodology | None:
+    """The behaviour a given published version denotes, or None if unknown."""
+    return METHODOLOGIES.get(version)

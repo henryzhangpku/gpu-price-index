@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from . import METHODOLOGY_VERSION
 from .archive import append_to_tape, stamp_superseded, write_snapshot
 from .estimator import Estimate, estimate
 from .models import IndexValue, NormalizedQuote, QualityFlag
@@ -28,7 +27,7 @@ from .quality import (
     check_provider_dropout,
     check_provider_level_shift,
 )
-from .spec import CONTRACTS, DEFAULT_GATES, Gates
+from .spec import CONTRACTS, CURRENT_METHODOLOGY, Gates, Methodology
 from .store import Store
 
 
@@ -56,7 +55,7 @@ def run_daily(
     store: Store,
     index_date: date | None = None,
     providers: list[Provider] | None = None,
-    gates: Gates | None = None,
+    gates: Gates | Methodology | None = None,
     revision_reason: str | None = None,
     archive_root: Path | None = None,
 ) -> RunReport:
@@ -66,7 +65,8 @@ def run_daily(
     an immutable snapshot and its published values are appended to the tape.
     Those two artefacts, not the database, are the durable record.
     """
-    gates = gates or DEFAULT_GATES
+    methodology = _methodology_of(gates)
+    gates = methodology.gates
     index_date = index_date or datetime.now(UTC).date()
 
     collection = collect_all(providers)
@@ -77,7 +77,7 @@ def run_daily(
     if archive_root is not None:
         snapshot_path = write_snapshot(archive_root, collection.observations)
 
-    quotes, preparation_flags = prepare_quotes(collection.observations)
+    quotes, preparation_flags = prepare_quotes(collection.observations, methodology)
     store.record_quotes(run_id, quotes)
 
     flags: list[QualityFlag] = list(collection.flags)
@@ -101,7 +101,7 @@ def run_daily(
         by_index[quote.index_code].append(quote)
 
     for code, index_quotes in by_index.items():
-        est = estimate(code, index_quotes, gates)
+        est = estimate(code, index_quotes, methodology)
 
         index_flags = list(est.flags)
         index_flags += check_adjustment_load(index_quotes)
@@ -111,7 +111,9 @@ def run_daily(
             flag.index_code = code
         store.record_flags(run_id, index_flags, index_code=code, index_date=index_date)
 
-        value = store.publish(code, index_date, est, run_id, revision_reason)
+        value = store.publish(
+            code, index_date, est, run_id, revision_reason, methodology.version
+        )
 
         report.estimates[code] = est
         report.values[code] = value
@@ -136,10 +138,20 @@ def run_daily(
     return report
 
 
+def _methodology_of(gates: Gates | Methodology | None) -> Methodology:
+    if gates is None:
+        return CURRENT_METHODOLOGY
+    if isinstance(gates, Methodology):
+        return gates
+    if gates == CURRENT_METHODOLOGY.gates:
+        return CURRENT_METHODOLOGY
+    return CURRENT_METHODOLOGY.model_copy(update={"gates": gates})
+
+
 def methodology_fingerprint() -> str:
     """Identify the methodology a value was produced under.
 
     Stamped onto every published value so that a series can be split at a
     methodology change rather than silently spliced across one.
     """
-    return METHODOLOGY_VERSION
+    return CURRENT_METHODOLOGY.version

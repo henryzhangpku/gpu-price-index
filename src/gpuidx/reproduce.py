@@ -19,6 +19,12 @@ A verify failure is not necessarily a bug. It is the correct alarm when the
 methodology changed without a version bump, when a snapshot was altered, or
 when a value was published from inputs that were never archived. All three
 are things a benchmark administrator has to be able to detect.
+
+Every tape row is recomputed under the methodology version it names, looked
+up in ``spec.METHODOLOGIES``, not under today's defaults. A change of
+methodology therefore leaves the historical series exactly as verifiable as
+it was; the only version-related failure left is a row naming a version this
+build does not carry, which is a real one.
 """
 
 from __future__ import annotations
@@ -26,11 +32,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import METHODOLOGY_VERSION
 from .archive import SNAPSHOT_DIR, list_snapshots, live_tape_values, read_snapshot, read_tape
 from .estimator import Estimate, estimate
 from .normalize import prepare_quotes
-from .spec import CONTRACTS, DEFAULT_GATES, Gates
+from .spec import CONTRACTS, CURRENT_METHODOLOGY, Gates, Methodology, methodology_for
 from .store import Store, _iso_z
 
 #: Values are compared to the cent. Tighter than this and floating-point
@@ -53,6 +58,9 @@ class VerifyReport:
     matched: int = 0
     mismatches: list[Mismatch] = field(default_factory=list)
     unverifiable: list[Mismatch] = field(default_factory=list)
+    #: Rows naming a methodology version this build cannot reproduce. Not a
+    #: version *difference* -- those are expected and handled -- but a version
+    #: with no registered behaviour, which makes the row unverifiable.
     methodology_drift: list[str] = field(default_factory=list)
     #: Tape rows naming a snapshot that is no longer on disk. Superseded
     #: revisions are not recomputed, so without this check their inputs could
@@ -65,7 +73,10 @@ class VerifyReport:
 
 
 def rebuild(
-    store: Store, root: Path, gates: Gates | None = None, recent: int | None = None
+    store: Store,
+    root: Path,
+    gates: Gates | Methodology | None = None,
+    recent: int | None = None,
 ) -> int:
     """Replay archived snapshots into a store, restoring run history.
 
@@ -80,7 +91,7 @@ def rebuild(
     entire published series, not a window of it. Pass ``None`` to replay
     everything, which is what an audit wants.
     """
-    gates = gates or DEFAULT_GATES
+    methodology = _methodology_of(gates)
     snapshots = list_snapshots(root)
     if recent is not None and recent > 0:
         snapshots = snapshots[-recent:]
@@ -93,7 +104,7 @@ def rebuild(
 
         run_id = store.start_run(per_provider)
         store.record_observations(run_id, archived.observations)
-        quotes, _ = prepare_quotes(archived.observations)
+        quotes, _ = prepare_quotes(archived.observations, methodology)
         store.record_quotes(run_id, quotes)
 
     _restore_tape(store, root)
@@ -133,7 +144,10 @@ def _restore_tape(store: Store, root: Path) -> None:
 
 def verify(root: Path, gates: Gates | None = None) -> VerifyReport:
     """Recompute published values from archived inputs and compare to the tape."""
-    gates = gates or DEFAULT_GATES
+    # Passing gates to verify is a diagnostic ("would this have published
+    # under stricter gates?"); it overrides the gates of every row's own
+    # methodology and is expected to produce mismatches.
+    gates_override = gates
     report = VerifyReport()
 
     # Index snapshots by filename. A value is checked against the exact run
@@ -157,12 +171,16 @@ def verify(root: Path, gates: Gates | None = None) -> VerifyReport:
     for (index_code, index_date), row in sorted(live_tape_values(root).items()):
         report.checked += 1
 
-        if row["methodology_version"] != METHODOLOGY_VERSION:
+        methodology = methodology_for(row["methodology_version"])
+        if methodology is None:
             report.methodology_drift.append(
                 f"{index_code} {index_date} published under methodology "
-                f"{row['methodology_version']}, current is {METHODOLOGY_VERSION}"
+                f"{row['methodology_version']}, which this build does not carry "
+                f"(known: {', '.join(sorted(_known_versions()))})"
             )
             continue
+        if gates_override is not None:
+            methodology = methodology.model_copy(update={"gates": gates_override})
 
         name = (row.get("snapshot") or "").strip()
         if not name:
@@ -192,9 +210,9 @@ def verify(root: Path, gates: Gates | None = None) -> VerifyReport:
             cache[name] = read_snapshot(available[name]).observations
         observations = cache[name]
 
-        quotes, _ = prepare_quotes(observations)
+        quotes, _ = prepare_quotes(observations, methodology)
         relevant = [q for q in quotes if q.index_code == index_code]
-        recomputed = estimate(index_code, relevant, gates)
+        recomputed = estimate(index_code, relevant, methodology)
 
         published_value = _as_float(row["value"])
         recomputed_value = recomputed.value if recomputed.passed else None
@@ -252,8 +270,6 @@ def estimate_from_archive(
     Returns the estimate and the snapshot it came from, or None and the reason
     it could not be derived.
     """
-    gates = gates or DEFAULT_GATES
-
     candidates = [
         row
         for row in read_tape(root)
@@ -270,10 +286,11 @@ def estimate_from_archive(
             return None, f"no revision {revision} for {index_code} on {index_date}"
         row = matching[0]
 
-    if row["methodology_version"] != METHODOLOGY_VERSION:
+    methodology = methodology_for(row["methodology_version"])
+    if methodology is None:
         return None, (
             f"published under methodology {row['methodology_version']}, "
-            f"current is {METHODOLOGY_VERSION} -- recomputing would explain it "
+            f"which this build does not carry -- recomputing would explain it "
             "under rules it was not produced by"
         )
 
@@ -285,9 +302,11 @@ def estimate_from_archive(
     if not path.exists():
         return None, f"named snapshot {name} is missing from the archive"
 
-    quotes, _ = prepare_quotes(read_snapshot(path).observations)
+    if gates is not None:
+        methodology = methodology.model_copy(update={"gates": gates})
+    quotes, _ = prepare_quotes(read_snapshot(path).observations, methodology)
     relevant = [q for q in quotes if q.index_code == index_code]
-    return estimate(index_code, relevant, gates), name
+    return estimate(index_code, relevant, methodology), name
 
 
 def _as_float(value: str | None) -> float | None:
@@ -307,3 +326,19 @@ def coverage(root: Path) -> dict[str, int]:
         "index_dates": len(dates),
         "indices": len(CONTRACTS),
     }
+
+
+def _methodology_of(gates: Gates | Methodology | None) -> Methodology:
+    if gates is None:
+        return CURRENT_METHODOLOGY
+    if isinstance(gates, Methodology):
+        return gates
+    if gates == CURRENT_METHODOLOGY.gates:
+        return CURRENT_METHODOLOGY
+    return CURRENT_METHODOLOGY.model_copy(update={"gates": gates})
+
+
+def _known_versions() -> list[str]:
+    from .spec import METHODOLOGIES
+
+    return list(METHODOLOGIES)
