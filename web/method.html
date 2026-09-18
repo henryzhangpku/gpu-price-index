@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
-<link rel="stylesheet" href="style.css?v=ab274058">
+<link rel="stylesheet" href="style.css?v=flow0918">
 </head>
 <body>
 
@@ -102,6 +102,82 @@
       </p>
     </div>
     <div class="tiers" id="tiers" style="margin-top:22px;"></div>
+  </section>
+
+  <!-- 2b -->
+  <section class="band">
+    <div class="section-head"><h2>How a price becomes a fixing</h2><span class="tag">the flow</span></div>
+    <div class="prose">
+      <p>
+        Every arrow that leaves the main line is a place an input is thrown away. Most of
+        the work in a benchmark is deciding what does not count. The raw observation is
+        written to an immutable snapshot before anything judges it, so every decision below
+        can be replayed.
+      </p>
+    </div>
+    <div class="card diagram" style="margin-top:22px;max-width:none;">
+      <pre class="mermaid">
+flowchart TB
+    SRC["~20 clouds · 5 adapters"] --> OBS["raw observation"]
+    OBS -. "written first" .-> SNAP[("snapshot · immutable")]
+
+    OBS --> A{"administered?"}
+    A -- yes --> DROP[["discarded"]]
+    A -- no --> BK{"marketplace book<br/>with enough sellers?"}
+    BK -- "too few, or unproven" --> HOLD[["venue held out of that index"]]
+    BK -- "yes / not a book" --> B{"matches a contract?"}
+    B -- no --> DROP
+    B -- yes --> ID{"the product it names?<br/>a real rate, in USD?"}
+    ID -- "variant · teaser · other currency" --> DROP
+    ID -- yes --> C{"US region?"}
+    C -- "disclosed non-US" --> DROP
+    C -- "yes / undisclosed" --> D["restate to the benchmark good"]
+    D --> E{"over 1.75x cumulative?"}
+    E -- yes --> DROP
+    E -- no --> NQ["normalised quote"]
+
+    NQ --> MED["collapse to provider medians<br/>+ each provider's own spread"]
+    MED --> MAD{"within 3 robust sigma?"}
+    MAD -- no --> SCR[["screened, and recorded"]]
+    MAD -- yes --> WT["tier weights, 35% cap"]
+    WT --> VAL["interquantile mean of spread votes<br/>band = 1.0 today · candidate value ± band"]
+
+    VAL --> G{"every enabled gate holds?"}
+    G -- yes --> PUB["published"]
+    G -- no --> WH["withheld · failing gate recorded"]
+    PUB --> TAPE[("append-only tape")]
+    WH --> TAPE
+      </pre>
+    </div>
+    <div class="prose" style="margin-top:22px;">
+      <p>
+        The same journey in types. Each arrow is a function; each box is a frozen
+        dataclass, so the flow above is also the module boundary.
+      </p>
+    </div>
+    <div class="card diagram" style="margin-top:22px;max-width:none;">
+      <pre class="mermaid">
+flowchart LR
+    RO["RawObservation<br/><i>what a venue said</i>"]
+    NQ["NormalizedQuote<br/><i>restated onto the benchmark good</i>"]
+    RJ["Rejection<br/><i>and why it did not count</i>"]
+    PA["ProviderAggregate<br/><i>one vote per provider,<br/>weight + screen verdict</i>"]
+    ES["Estimate<br/><i>candidate value, every GateResult,<br/>every QualityFlag</i>"]
+    IV["IndexValue<br/><i>published, or withheld naming the gate</i>"]
+    TAPE[("append-only tape<br/><i>revision + as-of</i>")]
+
+    RO -->|normalize| NQ
+    RO -.->|normalize| RJ
+    NQ -->|aggregate_by_provider| PA
+    PA -->|screen_outliers, assign_weights| PA
+    PA -->|estimate| ES
+    ES -->|pipeline| IV
+    IV --> TAPE
+      </pre>
+    </div>
+    <p class="note" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:14px 0 0;">
+      Same diagrams as the README, rendered here so the method can be read without leaving the site.
+    </p>
   </section>
 
   <!-- 3 -->
@@ -291,6 +367,53 @@ sigma test undefined -> screen returns
   </footer>
 
 </div>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+
+const sources = [...document.querySelectorAll("pre.mermaid")].map((el) => [el, el.textContent]);
+const isDark = () => {
+  const explicit = document.documentElement.getAttribute("data-theme");
+  return explicit ? explicit === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+};
+async function drawDiagrams() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue(name).trim();
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: "base",
+    securityLevel: "loose",
+    flowchart: { curve: "basis", htmlLabels: true, padding: 10 },
+    themeVariables: {
+      fontFamily: "Chivo, system-ui, sans-serif",
+      fontSize: "13px",
+      background: v("--surface"),
+      primaryColor: v("--surface"),
+      primaryTextColor: v("--ink"),
+      primaryBorderColor: v("--ink"),
+      lineColor: v("--muted"),
+      secondaryColor: v("--bg"),
+      tertiaryColor: v("--bg"),
+      clusterBkg: v("--bg"),
+      clusterBorder: v("--rule"),
+      edgeLabelBackground: v("--surface"),
+      darkMode: isDark(),
+    },
+  });
+  for (const [el, src] of sources) {
+    el.removeAttribute("data-processed");
+    el.textContent = src;
+  }
+  await mermaid.run({ nodes: sources.map(([el]) => el) });
+}
+drawDiagrams().catch(() => {});
+document.querySelector(".theme-toggle")?.addEventListener("click", () => {
+  setTimeout(() => drawDiagrams().catch(() => {}), 0);
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  drawDiagrams().catch(() => {});
+});
+</script>
 
 <script type="module">
 import {
