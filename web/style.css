@@ -457,17 +457,50 @@ tr.screened .code { text-decoration: line-through; color: var(--muted); }
 }
 .asof-banner .mono { font-family: var(--mono); font-size: 12.5px; }
 
-/* rendered mermaid diagrams on the method page */
-.card.diagram { overflow: auto; padding: 18px 12px; position: relative; }
-.card.diagram.tall { max-height: 80vh; }
-.card.diagram pre.mermaid { margin: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); }
-.card.diagram svg { display: block; margin: 0 auto; }
-.card.diagram .label, .card.diagram .nodeLabel, .card.diagram .edgeLabel {
-  text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink);
+/* the fixing flow, laid out by hand so it fits a screen */
+.flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 22px; }
+@media (max-width: 860px) { .flow { grid-template-columns: 1fr; } }
+.stage {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 18px 20px 20px; box-shadow: var(--shadow); min-width: 0;
 }
-.card.diagram.wide::after, .card.diagram.tall::after {
-  position: sticky; left: 0; bottom: 0; display: block; text-align: right;
-  font-family: var(--mono); font-size: 11px; color: var(--muted); padding-top: 6px;
+.stage .n { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .08em; }
+.stage h3 { font-family: var(--ui); font-size: 16px; margin: 4px 0 12px; }
+.stage ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.stage li {
+  font-family: var(--ui); font-size: 14px; line-height: 1.45; color: var(--ink-2);
+  padding-left: 16px; position: relative;
 }
-.card.diagram.wide::after { content: "scroll →"; }
-.card.diagram.tall::after { content: "scroll ↓"; }
+.stage li::before {
+  content: ""; position: absolute; left: 0; top: .5em; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--published, var(--accent));
+}
+.stage li.drop::before { background: var(--screened, var(--warn, var(--withheld))); }
+.stage li.hold::before { background: var(--withheld); }
+.stage li b { font-weight: 600; color: var(--ink); }
+.stage li .to { display: block; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stage li.drop .to { color: var(--screened, var(--warn, var(--withheld))); }
+.stage li.hold .to { color: var(--withheld); }
+.flow-legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.flow-legend span::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: 1px;
+  background: var(--published, var(--accent));
+}
+.flow-legend span.drop::before { background: var(--screened, var(--warn, var(--withheld))); }
+.flow-legend span.hold::before { background: var(--withheld); }
+.types { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; list-style: none; padding: 0; margin: 22px 0 0; }
+@media (max-width: 960px) { .types { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.types li {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 12px 14px; min-width: 0; position: relative;
+}
+.types li::after {
+  content: "\2192"; position: absolute; right: -11px; top: 12px; font-family: var(--mono);
+  font-size: 13px; color: var(--muted); background: var(--bg); padding: 0 2px; z-index: 1;
+}
+.types li:last-child::after { content: none; }
+@media (max-width: 960px) { .types li::after { content: none; } }
+.types li b { display: block; font-family: var(--mono); font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; }
+.types li i { display: block; font-family: var(--serif); font-size: 13.5px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+.types li small { display: block; font-family: var(--mono); font-size: 11px; color: var(--accent); margin-top: 8px; }
+.types li.alt { border-style: dashed; }

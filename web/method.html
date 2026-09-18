@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
-<link rel="stylesheet" href="style.css?v=flow0918e">
+<link rel="stylesheet" href="style.css?v=flow0918f">
 </head>
 <body>
 
@@ -109,75 +109,87 @@
     <div class="section-head"><h2>How a price becomes a fixing</h2><span class="tag">the flow</span></div>
     <div class="prose">
       <p>
-        Every arrow that leaves the main line is a place an input is thrown away. Most of
-        the work in a benchmark is deciding what does not count. The raw observation is
-        written to an immutable snapshot before anything judges it, so every decision below
-        can be replayed.
+        Every step that leaves the main line is a place an input is thrown away. Most of
+        the work in a benchmark is deciding what does not count, and every decision below
+        is recorded, so any published value can be replayed from the snapshot it names.
       </p>
     </div>
-    <div class="card diagram" style="margin-top:22px;max-width:none;">
-      <pre class="mermaid">
-flowchart TB
-    SRC["~20 clouds · 5 adapters"] --> OBS["raw observation"]
-    OBS -. "written first" .-> SNAP[("snapshot · immutable")]
-
-    OBS --> A{"administered?"}
-    A -- yes --> DROP[["discarded"]]
-    A -- no --> BK{"marketplace book<br/>with enough sellers?"}
-    BK -- "too few, or unproven" --> HOLD[["venue held out of that index"]]
-    BK -- "yes / not a book" --> B{"matches a contract?"}
-    B -- no --> DROP
-    B -- yes --> ID{"the product it names?<br/>a real rate, in USD?"}
-    ID -- "variant · teaser · other currency" --> DROP
-    ID -- yes --> C{"US region?"}
-    C -- "disclosed non-US" --> DROP
-    C -- "yes / undisclosed" --> D["restate to the benchmark good"]
-    D --> E{"over 1.75x cumulative?"}
-    E -- yes --> DROP
-    E -- no --> NQ["normalised quote"]
-
-    NQ --> MED["collapse to provider medians<br/>+ each provider's own spread"]
-    MED --> MAD{"within 3 robust sigma?"}
-    MAD -- no --> SCR[["screened, and recorded"]]
-    MAD -- yes --> WT["tier weights, 35% cap"]
-    WT --> VAL["interquantile mean of spread votes<br/>band = 1.0 today · candidate value ± band"]
-
-    VAL --> G{"every enabled gate holds?"}
-    G -- yes --> PUB["published"]
-    G -- no --> WH["withheld · failing gate recorded"]
-    PUB --> TAPE[("append-only tape")]
-    WH --> TAPE
-      </pre>
+    <div class="flow">
+    <div class="stage">
+      <div class="n">01</div>
+      <h3>Collect</h3>
+      <ul>
+        <li><b>~20 clouds, 5 adapters</b> produce a raw observation</li>
+        <li>Written first to an <b>immutable snapshot</b>, before anything judges it</li>
+      </ul>
     </div>
-    <div class="prose" style="margin-top:22px;">
+    <div class="stage">
+      <div class="n">02</div>
+      <h3>Admit</h3>
+      <ul>
+        <li class="drop"><b>Administered</b> price: a function of another price in the sample<span class="to">&rarr; discarded</span></li>
+        <li class="hold">Marketplace book with <b>too few or unproven sellers</b><span class="to">&rarr; venue held out of that index</span></li>
+        <li class="drop">Matches <b>no contract</b><span class="to">&rarr; discarded</span></li>
+        <li class="drop"><b>Variant, teaser, other currency</b>: not the product it names, not a real rate in USD<span class="to">&rarr; discarded</span></li>
+        <li class="drop"><b>Disclosed non-US</b> region<span class="to">&rarr; discarded</span></li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="n">03</div>
+      <h3>Restate</h3>
+      <ul>
+        <li>Restate to the <b>benchmark good</b>: form factor, interconnect, node size</li>
+        <li class="drop">Over <b>1.75&times; cumulative</b> adjustment: the schedule would be talking, not the venue<span class="to">&rarr; discarded</span></li>
+        <li><b>Normalised quote</b></li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="n">04</div>
+      <h3>Aggregate</h3>
+      <ul>
+        <li>Collapse to <b>provider medians</b>, keeping each provider&rsquo;s own spread</li>
+        <li class="drop">Outside <b>3 robust sigma</b> of the panel<span class="to">&rarr; screened, and recorded</span></li>
+        <li><b>Tier weights</b>, any one provider capped at 35%</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="n">05</div>
+      <h3>Estimate</h3>
+      <ul>
+        <li><b>Interquantile mean</b> of the spread votes</li>
+        <li>Band = 1.0 today: the <b>candidate value &plusmn; band</b></li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="n">06</div>
+      <h3>Gate</h3>
+      <ul>
+        <li><b>Every enabled gate holds</b><span class="to">&rarr; published</span></li>
+        <li class="hold"><b>Any gate fails</b><span class="to">&rarr; withheld, failing gate recorded</span></li>
+        <li>Both outcomes go to the <b>append-only tape</b>: revision, as-of, snapshot</li>
+      </ul>
+    </div>
+    </div>
+    <div class="flow-legend">
+      <span>stays on the main line</span>
+      <span class="drop">thrown away, reason recorded</span>
+      <span class="hold">held or flagged, still on the record</span>
+    </div>
+    <div class="prose" style="margin-top:26px;">
       <p>
-        The same journey in types. Each arrow is a function; each box is a frozen
-        dataclass, so the flow above is also the module boundary.
+        The same journey in types. Each box is a frozen dataclass and each label under it
+        is the function that produces the next one, so the flow above is also the module
+        boundary.
       </p>
     </div>
-    <div class="card diagram" style="margin-top:22px;max-width:none;">
-      <pre class="mermaid">
-flowchart LR
-    RO["RawObservation<br/><i>what a venue said</i>"]
-    NQ["NormalizedQuote<br/><i>restated onto the benchmark good</i>"]
-    RJ["Rejection<br/><i>and why it did not count</i>"]
-    PA["ProviderAggregate<br/><i>one vote per provider,<br/>weight + screen verdict</i>"]
-    ES["Estimate<br/><i>candidate value, every GateResult,<br/>every QualityFlag</i>"]
-    IV["IndexValue<br/><i>published, or withheld naming the gate</i>"]
-    TAPE[("append-only tape<br/><i>revision + as-of</i>")]
-
-    RO -->|normalize| NQ
-    RO -.->|normalize| RJ
-    NQ -->|aggregate_by_provider| PA
-    PA -->|screen_outliers, assign_weights| PA
-    PA -->|estimate| ES
-    ES -->|pipeline| IV
-    IV --> TAPE
-      </pre>
-    </div>
-    <p class="note" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin:14px 0 0;">
-      Same diagrams as the README, rendered here so the method can be read without leaving the site.
-    </p>
+    <ol class="types">
+      <li><b>RawObservation</b><i>what a venue said</i><small>normalize</small></li>
+      <li><b>NormalizedQuote</b><i>restated onto the benchmark good</i><small>aggregate_by_provider</small></li>
+      <li class="alt"><b>Rejection</b><i>and why it did not count</i></li>
+      <li><b>ProviderAggregate</b><i>one vote per provider, weight + screen verdict</i><small>screen_outliers, assign_weights, estimate</small></li>
+      <li><b>Estimate</b><i>candidate value, every GateResult, every QualityFlag</i><small>pipeline</small></li>
+      <li><b>IndexValue</b><i>published, or withheld naming the gate; then the tape</i></li>
+    </ol>
   </section>
 
   <!-- 3 -->
@@ -367,65 +379,6 @@ sigma test undefined -> screen returns
   </footer>
 
 </div>
-
-<script type="module">
-import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
-
-const sources = [...document.querySelectorAll("pre.mermaid")].map((el) => [el, el.textContent]);
-const isDark = () => {
-  const explicit = document.documentElement.getAttribute("data-theme");
-  return explicit ? explicit === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
-};
-async function drawDiagrams() {
-  const css = getComputedStyle(document.documentElement);
-  const v = (name) => css.getPropertyValue(name).trim();
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: "base",
-    securityLevel: "loose",
-    flowchart: { curve: "basis", htmlLabels: false, useMaxWidth: false, padding: 8, nodeSpacing: 24, rankSpacing: 30 },
-    themeVariables: {
-      fontFamily: "Chivo, system-ui, sans-serif",
-      fontSize: "13px",
-      background: v("--surface"),
-      primaryColor: v("--surface"),
-      primaryTextColor: v("--ink"),
-      primaryBorderColor: v("--ink"),
-      lineColor: v("--muted"),
-      secondaryColor: v("--bg"),
-      tertiaryColor: v("--bg"),
-      clusterBkg: v("--bg"),
-      clusterBorder: v("--rule"),
-      edgeLabelBackground: v("--surface"),
-      darkMode: isDark(),
-    },
-  });
-  for (const [el, src] of sources) {
-    el.removeAttribute("data-processed");
-    el.textContent = src;
-  }
-  await mermaid.run({ nodes: sources.map(([el]) => el) });
-  // natural size, scrolled sideways inside the card: a pipeline reads left to right
-  for (const [el] of sources) {
-    const svg = el.querySelector("svg");
-    if (!svg) continue;
-    const [, , w, h] = (svg.getAttribute("viewBox") || "0 0 0 0").split(/\s+/).map(Number);
-    svg.style.maxWidth = "none";
-    svg.style.width = `${Math.ceil(w)}px`;
-    svg.style.height = `${Math.ceil(h)}px`;
-    const card = el.closest(".card.diagram");
-    card.classList.toggle("wide", w > card.clientWidth);
-    card.classList.toggle("tall", h > window.innerHeight * 0.8);
-  }
-}
-drawDiagrams().catch(() => {});
-document.querySelector(".theme-toggle")?.addEventListener("click", () => {
-  setTimeout(() => drawDiagrams().catch(() => {}), 0);
-});
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-  drawDiagrams().catch(() => {});
-});
-</script>
 
 <script type="module">
 import {
