@@ -20,7 +20,7 @@ The first asset-pricing treatment of compute. Directly relevant to
 
 ### Where it agrees with this repository
 
-`forward.py` refuses to publish a forward curve on the grounds that a GPU-hour
+`forward.py` derives no forward curve from spot, on the grounds that a GPU-hour
 cannot be stored, so the cash-and-carry relation
 
     F(T) = S · exp[(r + c − y)(T − t)]
