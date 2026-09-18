@@ -26,6 +26,8 @@ on:
       - "web/**"
       - "series/**"
       - "snapshots/**"
+      - "implied/**"
+      - "data/**"
       - "src/**"
       - ".github/workflows/pages.yml"
   workflow_run:

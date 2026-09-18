@@ -84,6 +84,8 @@
 
   <div id="detail"></div>
 
+  <div id="forward"></div>
+
   <footer class="site">
     <p style="margin:0;">
       Everything here is derived from the archived snapshots and the append-only tape by
@@ -412,10 +414,87 @@ function asOfSeries(revisions, knowledgeTime) {
   return [...byDate.values()].sort((a, b) => (a.index_date < b.index_date ? -1 : 1));
 }
 
+function forwardPanel(fwd) {
+  const label = (text) => `<p style="margin:22px 0 8px;font-family:var(--ui);font-size:12px;
+      letter-spacing:.13em;text-transform:uppercase;color:var(--muted)">${text}</p>`;
+  const foot = (html) => `<p style="margin:10px 0 0;font-family:var(--mono);font-size:12px;color:var(--muted)">${html}</p>`;
+
+  const imp = fwd.implied;
+  const ladder = imp
+    ? `<div class="scroll"><table>
+        <thead><tr><th>tenor</th><th class="num">expected</th><th class="num">dispersion</th>
+          <th class="num">tail mass</th><th class="num">volume</th><th></th></tr></thead>
+        <tbody>${imp.ladders.map((l) => `<tr>
+          <td>${escapeHtml(l.tenor)}<div style="font-family:var(--mono);font-size:12px;color:var(--muted)">
+            settles ${escapeHtml(l.settles || "--")} on ${escapeHtml(l.source_index || "--")}</div></td>
+          <td class="num">${l.withheld ? `<span class="status withheld">withheld</span>` : fmtUsd(l.expected, 2)}</td>
+          <td class="num">${fmtUsd(l.dispersion, 2)}</td>
+          <td class="num">${fmtPct(l.tail_mass)}</td>
+          <td class="num">${l.volume == null ? "--" : "$" + Math.round(l.volume).toLocaleString()}</td>
+          <td>${l.withheld && l.refusals.length ? `<div class="reason">${escapeHtml(l.refusals[0])}</div>` : ""}</td>
+        </tr>`).join("")}</tbody></table></div>` +
+      foot(`read ${escapeHtml((imp.read_at || "").replace("T", " ").slice(0, 16))} UTC.
+        Mutually exclusive brackets are already a distribution over the settlement value:
+        no bootstrap from spot, no premium assumed. A row is withheld when the book does
+        not sum, too much mass sits in the open tails, or volume is too thin.`)
+    : `<p class="empty">no ladder read on record</p>`;
+
+  const pis = fwd.band.risk_premiums;
+  const inconsistent = fwd.band.consistency.filter((c) => !c.consistent);
+  const band = `<div class="scroll"><table>
+      <thead><tr><th>commitment</th><th class="num">of on-demand</th>
+        ${pis.map((pi) => `<th class="num">&pi; = ${fmtPct(pi)}</th>`).join("")}</tr></thead>
+      <tbody>${fwd.band.points.map((pt) => `<tr>
+        <td>${escapeHtml(pt.vendor)} ${pt.tenor_years}y</td>
+        <td class="num">${fmtPct(pt.price_ratio)}</td>
+        ${pis.map((pi) => `<td class="num">${fmtPct(pt.annual_decline[pi.toFixed(2)], 1)}</td>`).join("")}
+      </tr>`).join("")}</tbody></table></div>` +
+    foot(`implied annual decline in spot, by the share &pi; of the discount attributed to
+      lock-in rather than to expectations. One discount is one equation in several
+      unknowns, so the width of each row is the honest headline.${inconsistent.length
+        ? " " + inconsistent.map((c) =>
+            `${escapeHtml(c.vendor)}&rsquo;s ${c.tenors.map((x) => x + "y").join(" and ")} discounts imply rates ${(c.spread * 100).toFixed(0)} points apart`
+          ).join("; ") + ": lock-in cost grows with term."
+        : ""}`);
+
+  const s = fwd.strip_example;
+  const strip = `<div class="scroll"><table>
+      <thead><tr><th class="num">period</th><th class="num">months</th>
+        <th class="num">term quote</th><th class="num">forward</th></tr></thead>
+      <tbody>${s.forwards.map((f) => `<tr>
+        <td class="num">${f.period}</td><td class="num">${f.months}</td>
+        <td class="num">${fmtUsd(f.term_quote, 2)}</td>
+        <td class="num"><strong>${fmtUsd(f.forward, 2)}</strong></td>
+      </tr>`).join("")}</tbody></table></div>` +
+    foot(`Silicon Data&rsquo;s own published H100 term quotes as of ${escapeHtml(s.as_of)}
+      (<a href="${escapeHtml(s.source)}">their post</a>), stripped by subtracting adjacent
+      term costs. The forward for months 7&ndash;12 matches the $2.08 the post reports. The
+      arithmetic is the easy part; the quotes are not public.`);
+
+  return `<div class="panel">
+    <header><h2>Term structure</h2><span class="note">what can and cannot be derived</span></header>
+    <div class="body">
+      <p style="margin:0;font-size:15px;color:var(--ink-2);font-family:var(--ui)">
+        No forward curve is published here. It cannot be derived from spot &mdash; a GPU-hour
+        cannot be stored, so nothing pins a forward to today&rsquo;s rate &mdash; and it can only
+        be stripped from a term structure, which no provider publishes by tenor. Three things
+        are published instead.</p>
+      ${label("1 &middot; read off traded bracket ladders")}
+      ${ladder}
+      ${label("2 &middot; the committed-use discount, inverted")}
+      ${band}
+      ${label("3 &middot; the strip, on someone else&rsquo;s term quotes")}
+      ${strip}
+    </div>
+  </div>`;
+}
+
+
 /* ---------- wiring ---------- */
 
 try {
-  const { meta, series, latest } = await loadBundle(["meta", "series", "latest"]);
+  const { meta, series, latest, forward } = await loadBundle(["meta", "series", "latest", "forward"]);
+  document.getElementById("forward").innerHTML = forwardPanel(forward);
   const codes = Object.keys(latest.indices);
   let selected = codes.find((c) => latest.indices[c].status === "published") ?? codes[0];
 
