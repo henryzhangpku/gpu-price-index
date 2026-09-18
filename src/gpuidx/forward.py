@@ -175,6 +175,65 @@ def implied_forward_level(spot: float, decline_rate: float, horizon_years: float
     return spot * math.exp(-decline_rate * horizon_years)
 
 
+@dataclass
+class ForwardPoint:
+    """One period of a stripped forward curve."""
+
+    period: int
+    #: Length of this period in months (the gap to the previous tenor).
+    months: float
+    #: Per-period rate a buyer implicitly pays for this period alone.
+    forward: float
+    #: The term quote that this period was stripped from.
+    term_quote: float
+
+
+def strip_forwards(quotes: list[tuple[float, float]]) -> list[ForwardPoint]:
+    """Strip term rental quotes into a per-period forward curve.
+
+    A two-month rental at $1.90/hr is two monthly deliveries sold as a bundle
+    for $3.80. If one month alone costs $2.00, the bundle is implicitly
+    charging $1.80 for the second month. Subtracting adjacent term costs
+    recovers the price of each period on its own -- the same arithmetic that
+    bootstraps zero rates from par bonds, and what Bandi & Su (2026) call a
+    synthetic future.
+
+    ``quotes`` is ``[(tenor_months, rate_per_unit), ...]`` in any order. The
+    result has one point per tenor; the first is the spot period itself.
+
+    What this does *not* do is separate expectation from premium. Each
+    forward is still one number carrying expected spot, the lock-in
+    discount, and the access premium together. Stripping makes the curve
+    comparable with a traded future; it does not identify its parts. See
+    ``implied_decline`` for the conditional inversion and its sensitivity.
+    """
+    if not quotes:
+        return []
+    ordered = sorted(quotes, key=lambda q: q[0])
+    if ordered[0][0] <= 0:
+        raise ValueError("tenors must be positive")
+    if len({tenor for tenor, _ in ordered}) != len(ordered):
+        raise ValueError("duplicate tenor")
+    out: list[ForwardPoint] = []
+    prev_tenor = 0.0
+    prev_total = 0.0
+    for period, (tenor, rate) in enumerate(ordered, start=1):
+        if rate <= 0:
+            raise ValueError("rates must be positive")
+        total = tenor * rate
+        months = tenor - prev_tenor
+        out.append(
+            ForwardPoint(
+                period=period,
+                months=months,
+                forward=(total - prev_total) / months,
+                term_quote=rate,
+            )
+        )
+        prev_tenor, prev_total = tenor, total
+    return out
+
+
 def load_committed_use(path: Path | None = None) -> list[TermPoint]:
     path = path or COMMITTED_USE_PATH
     if not path.exists():

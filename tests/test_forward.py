@@ -21,6 +21,7 @@ from gpuidx.forward import (
     implied_decline,
     implied_forward_level,
     premium_sensitivity,
+    strip_forwards,
 )
 
 
@@ -142,3 +143,31 @@ def test_one_and_three_year_discounts_disagree():
 def test_single_tenor_vendor_is_skipped():
     points = [TermPoint(vendor="solo", tenor_years=1, price_ratio=0.60)]
     assert consistency_check(points) == []
+
+
+def test_strip_recovers_per_month_forwards():
+    curve = strip_forwards([(1, 2.00), (2, 1.90), (3, 1.80)])
+    assert [round(p.forward, 6) for p in curve] == [2.00, 1.80, 1.60]
+    assert [p.months for p in curve] == [1, 1, 1]
+
+
+def test_strip_is_order_independent_and_handles_gaps():
+    curve = strip_forwards([(3, 1.80), (1, 2.00)])
+    # months 2-3 together cost 5.40 - 2.00 = 3.40, i.e. 1.70 per month
+    assert [round(p.forward, 6) for p in curve] == [2.00, 1.70]
+    assert [p.months for p in curve] == [1, 2]
+
+
+def test_strip_flat_curve_is_flat():
+    curve = strip_forwards([(m, 2.0) for m in (1, 2, 3, 6, 12)])
+    assert all(math.isclose(p.forward, 2.0) for p in curve)
+
+
+def test_strip_rejects_bad_inputs():
+    assert strip_forwards([]) == []
+    with pytest.raises(ValueError):
+        strip_forwards([(0, 2.0)])
+    with pytest.raises(ValueError):
+        strip_forwards([(1, 2.0), (1, 1.9)])
+    with pytest.raises(ValueError):
+        strip_forwards([(1, -2.0)])

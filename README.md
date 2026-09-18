@@ -275,6 +275,7 @@ uv run gpuidx rebuild                      # restore the database from the archi
 uv run gpuidx verify                       # recompute every value from its inputs
 uv run gpuidx calibrate                    # test the adjustment factors against venue pricing
 uv run gpuidx forward --spot 3.05          # what committed-use discounts do and don't imply
+uv run gpuidx strip 1=2.00 2=1.90 3=1.80    # strip term quotes into per-month forwards
 uv run gpuidx sensitivity                  # how much of each fixing rests on judgement
 uv run gpuidx export-web                   # dump the archive as JSON for the demo site
 ```
