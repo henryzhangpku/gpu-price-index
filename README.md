@@ -481,9 +481,11 @@ and the same argument applies to form factor, which *is* adjusted. Being
 consistent means screening both — which would leave one index standing and
 remove four. Naming that cost beats resolving it by preference.
 
-**There is no GPU forward curve, and the usual proxy does not work.** A
-GPU-hour is not storable, so no-arbitrage pins nothing and `F(T) = E[S(T)] +
-risk premium` — compute prices like electricity, not like gold. Inverting
+**A GPU forward curve cannot be derived from spot, and the public proxy does
+not work.** A GPU-hour is not storable, so no-arbitrage pins nothing and
+`F(T) = E[S(T)] + risk premium` — compute prices like electricity, not like
+gold. A curve *can* be stripped from an observed term structure (`gpuidx
+strip` does the arithmetic), but monthly term quotes are not public. Inverting
 committed-use discounts for an implied decline gives 35–68% per year depending
 on how much you attribute to lock-in, and AWS's own 1-year and 3-year discounts
 imply rates 23 points apart. Those numbers are not a forecast; they are proof

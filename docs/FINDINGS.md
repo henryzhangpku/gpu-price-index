@@ -183,7 +183,7 @@ coverage faces exactly this temptation, and the failure is invisible to
 consumers unless the methodology discloses provider counts per index. This one
 publishes them on every value.
 
-## 6. There is no GPU forward curve, and the usual proxy does not work
+## 6. A GPU forward curve cannot be derived from spot, and the public proxy does not work
 
 A GPU-hour cannot be stored. You cannot buy one today, hold it, and deliver it
 in six months; an unused hour is gone. That removes the machinery most
@@ -235,8 +235,10 @@ term structure assumes the commitment economics of a GPU node match those of a
 web server, which is not obviously true and is probably false.
 
 The honest conclusion is that a GPU forward curve cannot be derived from
-public data at all. It has to be observed, which requires either a liquid
-futures market or commercial access to bilateral term deals. `gpuidx forward`
+public data. It can be stripped from an observed term structure — adjacent
+term costs subtracted, the synthetic future of Bandi & Su, `gpuidx strip` —
+but that needs monthly term quotes, which means either a liquid futures market
+or commercial access to bilateral term deals. `gpuidx forward`
 exists to make the size of that gap explicit rather than to paper over it with
 a fitted curve.
 

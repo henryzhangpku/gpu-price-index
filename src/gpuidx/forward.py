@@ -18,8 +18,9 @@ This puts compute in the family of electricity, weather, and shipping rather
 than the family of gold and crude. Two practical consequences:
 
 * A forward curve here cannot be bootstrapped from spot. It has to be
-  observed. There is now something to observe -- prediction-market ladders on
-  the settlement value -- but it is thin; see `implied.py`, which reads the
+  observed, or stripped from an observed term structure (`strip_forwards`),
+  and monthly term quotes are not public. What is public -- prediction-market
+  ladders on the settlement value -- is thin; see `implied.py`, which reads the
   distribution off those brackets and reports the reasons not to trust it.
 * Term structure is driven by supply-side physics -- fab and HBM capacity,
   datacentre power, and above all the next-generation release cadence -- not

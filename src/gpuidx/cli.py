@@ -563,9 +563,9 @@ def implied_cmd(
 ) -> None:
     """Read an expected settlement level off prediction-market bracket ladders.
 
-    forward.py refuses to publish a curve because a GPU-hour is not storable,
-    so nothing pins a forward to spot, and the committed-use discount that can
-    be observed bundles expectation with the price of lock-in. A ladder of
+    forward.py publishes no curve because a GPU-hour is not storable, so
+    nothing pins a forward to spot, and the only public term data -- yearly
+    committed-use discounts -- bundles expectation with the price of lock-in. A ladder of
     mutually exclusive brackets does not have that problem: the quotes are a
     distribution over the settlement value directly.
 
@@ -717,7 +717,7 @@ def forward_cmd(
             "arbitrage relation to pin it down. Compute prices like electricity, not\n"
             "like gold. Every number below is an expectation conditional on an\n"
             "assumption that nothing in public data identifies.",
-            title="why there is no forward curve here",
+            title="why no forward curve is derived here",
             expand=False,
         )
     )
