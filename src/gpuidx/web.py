@@ -56,7 +56,7 @@ from .spec import (
     node_size_factor,
 )
 
-BUNDLE_FILES = ("meta.json", "series.json", "latest.json")
+BUNDLE_FILES = ("meta.json", "series.json", "latest.json", "forward.json")
 
 TIER_LABELS = {
     1: "executable",
@@ -382,12 +382,106 @@ def build_latest(root: Path, gates: Gates) -> dict[str, Any]:
 # -- bundle ----------------------------------------------------------------
 
 
+#: Silicon Data's own published H100 term quotes (their 15 Sep 2026 post,
+#: data as of 7 Sep 2026): a 6-month reserve at $2.52/hr and a 12-month at
+#: $2.30/hr. Stripping them reproduces the $2.08 forward that post reports.
+STRIP_EXAMPLE = {
+    "source": "https://www.silicondata.com/blog/compute-provider-guide-arbitrage-reserve-contracts-gpu-futures",
+    "as_of": "2026-09-07",
+    "quotes": [[6, 2.52], [12, 2.30]],
+}
+
+
+def build_forward(root: Path) -> dict[str, Any]:
+    """What the site can say about the term structure: two readings and a band.
+
+    No curve is derived from spot (a GPU-hour is not storable) and none is
+    stripped from a term structure (monthly term quotes are not public). What
+    is exported instead: the newest prediction-market ladder read, with its
+    withholdings; the committed-use inversion as a sensitivity band; and the
+    strip arithmetic run on Silicon Data's own published quotes.
+    """
+    from .forward import (
+        annual_decline_pct,
+        consistency_check,
+        load_committed_use,
+        premium_sensitivity,
+        strip_forwards,
+    )
+
+    implied: dict[str, Any] | None = None
+    implied_dir = root / "implied"
+    if implied_dir.is_dir():
+        records = sorted(implied_dir.glob("????-??-??.json"))
+        if records:
+            raw = json.loads(records[-1].read_text(encoding="utf-8"))
+            implied = {
+                "date": records[-1].stem,
+                "read_at": raw.get("read_at"),
+                "ladders": [
+                    {
+                        "tenor": l["tenor"],
+                        "settles": l.get("settles"),
+                        "source_index": l.get("source_index"),
+                        "expected": l.get("expected"),
+                        "dispersion": l.get("dispersion"),
+                        "book_sum": l.get("book_sum"),
+                        "tail_mass": l.get("tail_mass"),
+                        "volume": l.get("volume"),
+                        "withheld": bool(l.get("withheld")),
+                        "refusals": list(l.get("refusals") or []),
+                    }
+                    for l in raw.get("ladders", [])
+                ],
+            }
+
+    premiums = [0.0, 0.10, 0.20]
+    points = load_committed_use()
+    band = [
+        {
+            "vendor": pt.vendor,
+            "tenor_years": pt.tenor_years,
+            "price_ratio": pt.price_ratio,
+            "as_of": pt.as_of.isoformat() if pt.as_of else None,
+            "note": pt.note,
+            "annual_decline": {
+                f"{row['risk_premium']:.2f}": row["annual_decline"]
+                for row in premium_sensitivity(pt, premiums)
+            },
+        }
+        for pt in sorted(points, key=lambda q: (q.vendor, q.tenor_years))
+    ]
+    consistency = [
+        {
+            "vendor": row["vendor"],
+            "tenors": row["tenors"],
+            "implied_annual_decline": [annual_decline_pct(r) for r in row["implied"]],
+            "spread": row["spread"],
+            "consistent": row["consistent"],
+        }
+        for row in consistency_check(points)
+    ]
+
+    strip = [
+        {"period": f.period, "months": f.months, "term_quote": f.term_quote,
+         "forward": round(f.forward, 4)}
+        for f in strip_forwards([tuple(q) for q in STRIP_EXAMPLE["quotes"]])
+    ]
+
+    return {
+        "implied": implied,
+        "band": {"risk_premiums": premiums, "points": band, "consistency": consistency},
+        "strip_example": {**STRIP_EXAMPLE, "forwards": strip},
+    }
+
+
 def build_bundle(root: Path, gates: Gates | None = None) -> dict[str, Any]:
     gates = gates or DEFAULT_GATES
     return {
         "meta.json": build_meta(root, gates),
         "series.json": build_series(root),
         "latest.json": build_latest(root, gates),
+        "forward.json": build_forward(root),
     }
 
 

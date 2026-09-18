@@ -16,7 +16,14 @@ import pytest
 from gpuidx.archive import append_to_tape, write_snapshot
 from gpuidx.models import Commitment, FormFactor, Interconnect, RawObservation, Tier
 from gpuidx.spec import DEFAULT_GATES
-from gpuidx.web import BUNDLE_FILES, build_bundle, build_latest, build_series, write_bundle
+from gpuidx.web import (
+    BUNDLE_FILES,
+    build_bundle,
+    build_forward,
+    build_latest,
+    build_series,
+    write_bundle,
+)
 
 
 def _obs(source: str, price: float, gpus: int = 8, model: str = "H100 SXM") -> RawObservation:
@@ -176,3 +183,29 @@ def test_meta_publishes_the_constants_the_site_explains(archive):
     assert [t["tier"] for t in meta["tiers"]] == [1, 2, 3]
     assert meta["tiers"][0]["weight"] == 1.00
     assert len(meta["contracts"]) == 5
+
+
+def test_forward_strip_reproduces_silicon_data_published_forward(tmp_path):
+    fwd = build_forward(tmp_path)
+    forwards = [row["forward"] for row in fwd["strip_example"]["forwards"]]
+    # 6m at 2.52 and 12m at 2.30 -> months 7-12 at 2.08, as their own post reports
+    assert forwards == [2.52, 2.08]
+
+
+def test_forward_without_implied_records_is_explicit(tmp_path):
+    fwd = build_forward(tmp_path)
+    assert fwd["implied"] is None
+    assert fwd["band"]["points"], "the committed-use band ships with the package data"
+
+
+def test_forward_reads_newest_implied_record(tmp_path):
+    (tmp_path / "implied").mkdir()
+    for day, expected in (("2026-09-01", 2.5), ("2026-09-02", 2.7)):
+        (tmp_path / "implied" / f"{day}.json").write_text(json.dumps({
+            "read_at": f"{day}T14:00:00+00:00",
+            "ladders": [{"tenor": "end Sep 2026", "expected": expected, "withheld": False,
+                         "refusals": []}],
+        }), encoding="utf-8")
+    fwd = build_forward(tmp_path)
+    assert fwd["implied"]["date"] == "2026-09-02"
+    assert fwd["implied"]["ladders"][0]["expected"] == 2.7
