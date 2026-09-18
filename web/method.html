@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
-<link rel="stylesheet" href="style.css?v=flow0918b">
+<link rel="stylesheet" href="style.css?v=flow0918c">
 </head>
 <body>
 
@@ -117,7 +117,7 @@
     </div>
     <div class="card diagram" style="margin-top:22px;max-width:none;">
       <pre class="mermaid">
-flowchart TB
+flowchart LR
     SRC["~20 clouds · 5 adapters"] --> OBS["raw observation"]
     OBS -. "written first" .-> SNAP[("snapshot · immutable")]
 
@@ -383,7 +383,7 @@ async function drawDiagrams() {
     startOnLoad: false,
     theme: "base",
     securityLevel: "loose",
-    flowchart: { curve: "basis", htmlLabels: false, useMaxWidth: true, padding: 10 },
+    flowchart: { curve: "basis", htmlLabels: false, useMaxWidth: false, padding: 8, nodeSpacing: 28, rankSpacing: 36 },
     themeVariables: {
       fontFamily: "Chivo, system-ui, sans-serif",
       fontSize: "13px",
@@ -405,6 +405,16 @@ async function drawDiagrams() {
     el.textContent = src;
   }
   await mermaid.run({ nodes: sources.map(([el]) => el) });
+  // natural size, scrolled sideways inside the card: a pipeline reads left to right
+  for (const [el] of sources) {
+    const svg = el.querySelector("svg");
+    if (!svg) continue;
+    const [, , w, h] = (svg.getAttribute("viewBox") || "0 0 0 0").split(/\s+/).map(Number);
+    svg.style.maxWidth = "none";
+    svg.style.width = `${Math.ceil(w)}px`;
+    svg.style.height = `${Math.ceil(h)}px`;
+    el.classList.toggle("wide", w > el.clientWidth);
+  }
 }
 drawDiagrams().catch(() => {});
 document.querySelector(".theme-toggle")?.addEventListener("click", () => {
