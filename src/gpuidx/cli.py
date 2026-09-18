@@ -28,6 +28,7 @@ from .forward import (
     implied_forward_level,
     load_committed_use,
     premium_sensitivity,
+    strip_forwards,
 )
 from .implied import DEFAULT_LADDERS, expectation_sensitivity, fetch_distribution
 from .pipeline import run_daily
@@ -775,6 +776,57 @@ def forward_cmd(
             "spread means lock-in cost grows with term, which it plainly does, so the\n"
             "constant-rate model is the floor of a more honest term-dependent one.[/]"
         )
+
+
+@app.command("strip")
+def strip_cmd(
+    quotes: list[str] = typer.Argument(
+        ..., help="Term quotes as MONTHS=RATE, e.g. 1=2.00 2=1.90 3=1.80"
+    ),
+) -> None:
+    """Strip term rental quotes into a per-period forward curve.
+
+    A 2-month rental at $1.90 is two monthly deliveries for $3.80; if one
+    month alone is $2.00, month two is implicitly $1.80. Subtracting adjacent
+    term costs recovers each period's own price (Bandi & Su's synthetic
+    future). It does not separate expectation from premium: each forward is
+    still one number with three things inside it.
+    """
+    parsed: list[tuple[float, float]] = []
+    for item in quotes:
+        try:
+            months, rate = item.split("=", 1)
+            parsed.append((float(months), float(rate)))
+        except ValueError as exc:
+            console.print(f"[red]bad quote {item!r}: expected MONTHS=RATE[/]")
+            raise typer.Exit(2) from exc
+    try:
+        curve = strip_forwards(parsed)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+
+    table = Table(title="[bold]stripped forward curve[/]", title_justify="left",
+                  box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    for column in ("period", "months", "term quote", "term total", "forward"):
+        table.add_column(column, justify="right")
+    tenor = 0.0
+    for point in curve:
+        tenor += point.months
+        table.add_row(
+            str(point.period),
+            f"{point.months:g}",
+            f"${point.term_quote:.2f}",
+            f"${point.term_quote * tenor:.2f}",
+            f"[bold]${point.forward:.2f}[/]",
+        )
+    console.print(table)
+    console.print(
+        "[dim]Each forward still bundles expected spot, the lock-in discount and the\n"
+        "access premium. A traded future with no lock-in is what separates them:\n"
+        "future minus forward is the access wedge, future versus realised spot is\n"
+        "the risk premium. `gpuidx forward` shows the conditional inversion.[/]"
+    )
 
 
 @app.command("sensitivity")
