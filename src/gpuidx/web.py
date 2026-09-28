@@ -86,6 +86,24 @@ def _as_int(value: str | None) -> int:
 # -- meta ------------------------------------------------------------------
 
 
+# Dated notes about the TAPE itself -- publication failures, not market
+# decisions. A withheld fixing is written to the tape as a row carrying its
+# gate; a day the publisher never ran leaves nothing at all, and a reader who
+# sees a gap deserves to be told which of the two it was.
+TAPE_NOTES: list[dict[str, str]] = [
+    {
+        "from": "2026-09-18",
+        "to": "2026-09-27",
+        "text": (
+            "No fixings. The daily publisher failed its own lint check on a code "
+            "change made on 17 September and published nothing for ten days; the "
+            "implied-curve readings continued. Fixed 28 September. This was a "
+            "publication failure, not a market refusal: the gates never ran."
+        ),
+    },
+]
+
+
 def build_meta(root: Path, gates: Gates) -> dict[str, Any]:
     """Publish the methodology constants the site explains."""
     snapshots = list_snapshots(root)
@@ -156,6 +174,7 @@ def build_meta(root: Path, gates: Gates) -> dict[str, Any]:
             "first_date": dates[0] if dates else None,
             "last_date": dates[-1] if dates else None,
         },
+        "notes": list(TAPE_NOTES),
     }
 
 

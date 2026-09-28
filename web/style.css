@@ -504,3 +504,7 @@ tr.screened .code { text-decoration: line-through; color: var(--muted); }
 .types li i { display: block; font-family: var(--serif); font-size: 13.5px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
 .types li small { display: block; font-family: var(--mono); font-size: 11px; color: var(--accent); margin-top: 8px; }
 .types li.alt { border-style: dashed; }
+
+/* Dated notes about the tape itself, under the daily fixing header. */
+.tape-notes { margin: 0 0 .75rem; padding: .55rem .8rem; border-left: 3px solid var(--warn, #d99a1f); background: color-mix(in srgb, var(--warn, #d99a1f) 10%, transparent); font-size: .85rem; line-height: 1.45; }
+.tape-notes b { font-weight: 700; }

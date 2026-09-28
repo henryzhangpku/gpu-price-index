@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
-<link rel="stylesheet" href="style.css?v=6e4f1fbclow0918f">
+<link rel="stylesheet" href="style.css?v=7d2c7245low0918f">
 </head>
 <body>
 
@@ -58,6 +58,7 @@
       <h2>Daily fixing</h2>
       <span class="note" id="board-meta"></span>
     </header>
+    <div class="tape-notes" id="tape-notes" hidden></div>
     <div id="board-table"><div class="loading">reading the tape&hellip;</div></div>
   </div>
 
@@ -502,6 +503,13 @@ try {
     `${longDate(latest.index_date)} · snapshot ${latest.snapshot} · methodology ${meta.methodology_version}`;
   document.getElementById("board-meta").textContent =
     `${latest.run.raw_observations} raw → ${latest.run.normalized_quotes} normalised · ${Object.keys(latest.run.sources).length} venues`;
+  // Notes about the tape itself: a gap the publisher caused is said out loud,
+  // so it cannot be mistaken for a run of withheld fixings.
+  const notes = Array.isArray(meta.notes) ? meta.notes : [];
+  const notesNode = document.getElementById("tape-notes");
+  notesNode.hidden = notes.length === 0;
+  notesNode.innerHTML = notes.map((n) =>
+    `<div><b>${escapeHtml(shortDate(n.from))}–${escapeHtml(shortDate(n.to))} ${escapeHtml(String(n.to).slice(0, 4))}:</b> ${escapeHtml(n.text)}</div>`).join("");
 
   const picker = document.getElementById("picker");
   picker.innerHTML = codes.map((c) =>
