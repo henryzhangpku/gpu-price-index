@@ -420,18 +420,18 @@ def build_forward(root: Path) -> dict[str, Any]:
                 "read_at": raw.get("read_at"),
                 "ladders": [
                     {
-                        "tenor": l["tenor"],
-                        "settles": l.get("settles"),
-                        "source_index": l.get("source_index"),
-                        "expected": l.get("expected"),
-                        "dispersion": l.get("dispersion"),
-                        "book_sum": l.get("book_sum"),
-                        "tail_mass": l.get("tail_mass"),
-                        "volume": l.get("volume"),
-                        "withheld": bool(l.get("withheld")),
-                        "refusals": list(l.get("refusals") or []),
+                        "tenor": ladder["tenor"],
+                        "settles": ladder.get("settles"),
+                        "source_index": ladder.get("source_index"),
+                        "expected": ladder.get("expected"),
+                        "dispersion": ladder.get("dispersion"),
+                        "book_sum": ladder.get("book_sum"),
+                        "tail_mass": ladder.get("tail_mass"),
+                        "volume": ladder.get("volume"),
+                        "withheld": bool(ladder.get("withheld")),
+                        "refusals": list(ladder.get("refusals") or []),
                     }
-                    for l in raw.get("ladders", [])
+                    for ladder in raw.get("ladders", [])
                 ],
             }
 
