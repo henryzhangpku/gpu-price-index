@@ -34,6 +34,11 @@ MI300X pricing, so it fails the provider-count gate every day and prints
 nothing. An index that reported a number here would be reporting one vendor's
 rate card dressed up as a market.
 
+The back-series reconstructed from archived rate cards for 2023-2026
+(`series/backfill_ratecards*.csv`, [docs/BACKFILL.md](docs/BACKFILL.md)) is not
+an index under this methodology. It borrows section 4's restatement, pinned at
+1.1.0, and nothing else: its own estimator, its own gate, its own files.
+
 ## 3. The benchmark-equivalent contract
 
 An index over a heterogeneous good is meaningless without a standard unit.
