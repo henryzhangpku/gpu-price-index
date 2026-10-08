@@ -528,8 +528,8 @@ comparison was about.
 Between 29 September and 1 October 2026 `GIX-H100` went from **$3.14 to
 $4.10** (+31%) and stayed between $3.64 and $4.08 for the next week. The rate
 cards behind it did not move. Every number below reproduces from the archived
-snapshots with `uv run gpuidx weights GIX-H100 <date>` and
-`uv run gpuidx screen GIX-H100 <date>`.
+snapshots with `uv run gpuidx explain GIX-H100 <date>`, and the arithmetic of
+each step with `gpuidx weights` and `gpuidx screen` for the same date.
 
 **Nine of the twelve continuing contributors quoted the same price on every
 day from 28 September to 7 October.** Lambda $4.01, DigitalOcean $4.06,
