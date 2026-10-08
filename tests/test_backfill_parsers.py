@@ -222,3 +222,10 @@ def test_paperspace_skips_the_template_remnant_and_reads_the_footnote():
     (od,) = pick(rows, "H100 SXM")
     assert od.price_per_gpu_hour == 6.00 and od.sku == "H100 (footnote)"
     assert gpu_hour(pick(rows, "H100 SXM", Commitment.RESERVED)) == [2.24]
+
+
+def test_runpod_2026_structured_data_offers():
+    rows = parse("runpod_20260810082317")
+    assert gpu_hour(pick(rows, "H100 SXM")) == [2.99]
+    assert gpu_hour(pick(rows, "H100 SXM", Commitment.COMMUNITY)) == [2.69]
+    assert gpu_hour(pick(rows, "H200")) == [4.39]

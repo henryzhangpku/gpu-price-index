@@ -29,6 +29,7 @@ None of it is ever written into ``series/index_values.csv``.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 from dataclasses import dataclass, field
@@ -207,8 +208,6 @@ def _chosen(root: Path, source: Source) -> list[Capture]:
 def parse_all(root: Path, sources: list[Source] | None = None):
     rows: list[RateCardRow] = []
     manifest: list[dict] = []
-    import hashlib
-
     for source in sources or SOURCES:
         for c in _chosen(root, source):
             path = snapshot_path(root, source.name, c)

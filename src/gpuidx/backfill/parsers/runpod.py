@@ -19,6 +19,7 @@ recorded as a 1-GPU configuration and the node-size factor applies.
 
 from __future__ import annotations
 
+import json
 import re
 
 from ...models import Commitment
@@ -137,16 +138,17 @@ def _from_cards(body: bytes, captured: str, source: str) -> list[RateCardRow]:
     return out
 
 
-_ROW_START = re.compile(r'class="gpu-pricing-row[ "]')
-_MODEL = re.compile(r'data-line-clamp=""[^>]*>([^<]{2,40})</div>')
-_ROW_VRAM = re.compile(r'>(\d{2,3})</div><div[^>]*>GB VRAM<')
-_SECURE = re.compile(r'data-secure-cloud-price="(\d+(?:\.\d+)?)"')
-_COMMUNITY = re.compile(r'data-community-cloud-price="(\d+(?:\.\d+)?)"')
+_ROW_START = re.compile(r'class="gpu-pricing-row[ "]|class="gpu_table-row"')
+_MODEL = re.compile(r'data-line-clamp=""[^>]*>([^<]{2,40})</div>|class="gpu_name[^"]*">([^<]{2,40})<')
+_ROW_VRAM = re.compile(r'>(\d{2,3})</div><div[^>]*>GB VRAM<|>(\d{2,3}) GB VRAM<')
+_SECURE = re.compile(r'data-secure(?:-cloud-price)?="(\d+(?:\.\d+)?)"')
+_COMMUNITY = re.compile(r'data-community(?:-cloud-price)?="(\d+(?:\.\d+)?)"')
 
 
 def _from_data_attributes(text: str, captured: str, source: str) -> list[RateCardRow]:
-    """Mid-2025 on: the visible price is a script-filled ``0``; the rate card
-    sits in ``data-secure-cloud-price`` / ``data-community-cloud-price``
+    """Mid-2025 on: the visible price is a script-filled ``0`` (or a copy of
+    one of two figures); the rate card sits in ``data-secure-cloud-price`` /
+    ``data-community-cloud-price`` (later ``data-secure`` / ``data-community``)
     attributes on each row, which is what the script reads."""
     starts = [m.start() for m in _ROW_START.finditer(text)]
     out: list[RateCardRow] = []
@@ -155,9 +157,10 @@ def _from_data_attributes(text: str, captured: str, source: str) -> list[RateCar
         m = _MODEL.search(w)
         if not m:
             continue
-        name = m.group(1).strip()
+        name = (m.group(1) or m.group(2)).strip()
         v = _ROW_VRAM.search(w)
-        gpu = classify(name, int(v.group(1)) if v else None)
+        vram = int(v.group(1) or v.group(2)) if v else None
+        gpu = classify(name, vram)
         if gpu is None:
             continue
         for pattern, commitment, label in (
@@ -185,11 +188,77 @@ def _from_data_attributes(text: str, captured: str, source: str) -> list[RateCar
     return out
 
 
+_LD = re.compile(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', re.S | re.I)
+
+
+def _walk(node):
+    if isinstance(node, dict):
+        yield node
+        for v in node.values():
+            yield from _walk(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _walk(v)
+
+
+def _from_structured_data(text: str, captured: str, source: str) -> list[RateCardRow]:
+    """Mid-2026 on: schema.org ``Product`` records, one per GPU, each with a
+    "Secure Cloud" and a "Community Cloud" ``Offer``."""
+    out: list[RateCardRow] = []
+    for block in _LD.findall(text):
+        try:
+            data = json.loads(block)
+        except ValueError:
+            continue
+        for node in _walk(data):
+            if node.get("@type") != "Product":
+                continue
+            name = str(node.get("name", "")).replace(" GPU on Runpod", "")
+            gpu = classify(name)
+            if gpu is None:
+                continue
+            offers = node.get("offers", {})
+            offers = offers.get("offers", []) if isinstance(offers, dict) else offers
+            for offer in offers if isinstance(offers, list) else []:
+                label = str(offer.get("name", ""))
+                if offer.get("priceCurrency") != "USD":
+                    continue
+                if label == "Secure Cloud":
+                    commitment = Commitment.ON_DEMAND
+                elif label == "Community Cloud":
+                    commitment = Commitment.COMMUNITY
+                else:
+                    continue
+                try:
+                    price = float(offer.get("price"))
+                except (TypeError, ValueError):
+                    continue
+                if price <= 0:
+                    continue
+                out.append(
+                    RateCardRow(
+                        source=source,
+                        captured=captured,
+                        sku=f"{name} ({label})",
+                        gpu_model=gpu.model,
+                        gpu_count=1,
+                        price_per_instance_hour=price,
+                        commitment=commitment,
+                        form_factor=gpu.form_factor,
+                        interconnect=gpu.interconnect,
+                        vram_gb=gpu.vram_gb,
+                        note=f"schema.org Offer '{label}' {price} USD per hour",
+                    )
+                )
+    return out
+
+
 @register("runpod")
 def parse(body: bytes, captured: str, source: str) -> list[RateCardRow]:
     text = body.decode("utf-8", errors="replace")
     return (
         _from_records(text, captured, source)
         or _from_data_attributes(text, captured, source)
+        or _from_structured_data(text, captured, source)
         or _from_cards(body, captured, source)
     )
