@@ -23,6 +23,14 @@ Dispersion is the live index's robust coefficient of variation across the
 provider votes, reported and flagged above the live ceiling, never gated: on
 three to five points it is too coarse an order statistic to refuse on.
 
+Because the panel changes from period to period with what the archive
+happened to capture, the level moves when a provider enters or leaves even if
+no price moved. ``matched_log_change`` is the composition-robust alternative:
+the median, over providers voting in both this period and the one before, of
+the log change in each one's own vote, published only when at least three
+providers match. It is a different estimator of the same thing, not a fill:
+a period with no matched panel gets no change.
+
 Non-on-demand prices (reserved, spot, community) never enter the value. Their
 raw per-GPU medians are carried in side columns so a reader can see them, and
 so nobody is tempted to restate them into the headline.
@@ -30,6 +38,7 @@ so nobody is tempted to restate them into the headline.
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -68,6 +77,8 @@ SERIES_COLUMNS = [
     "reserved_providers",
     "spot_raw_median",
     "spot_providers",
+    "matched_providers",
+    "matched_log_change",
     "methodology_version",
     "label",
 ]
@@ -142,10 +153,19 @@ def build_series(
         side[d.row.source].append(d.row.price_per_gpu_hour)
 
     rows: list[dict] = []
+    previous: dict[str, dict[str, float]] = {}
     for period in periods:
         for code in BACKFILL_INDICES:
             cell = cells.get((period, code), _Cell())
             votes = {p: statistics.median(v) for p, v in sorted(cell.od.items())}
+            before = previous.get(code, {})
+            common = sorted(set(votes) & set(before))
+            matched = (
+                statistics.median(math.log(votes[p] / before[p]) for p in common)
+                if len(common) >= MIN_PROVIDERS
+                else None
+            )
+            previous[code] = votes
             n = len(votes)
             value = statistics.median(votes.values()) if votes else None
             disp = robust_dispersion(list(votes.values()))
@@ -176,6 +196,8 @@ def build_series(
                     "reserved_providers": res_n,
                     "spot_raw_median": _fmt(spot_med),
                     "spot_providers": spot_n,
+                    "matched_providers": len(common),
+                    "matched_log_change": _fmt(matched, 6),
                     "methodology_version": methodology_version,
                     "label": LABEL,
                 }

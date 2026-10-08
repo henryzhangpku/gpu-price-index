@@ -192,3 +192,33 @@ def test_every_fixture_restates_without_error_and_reads_something(name):
     assert rows
     kept, dropped = restate(rows)
     assert len(kept) + len(dropped) == len(rows)
+
+
+# -- RunPod and Paperspace ----------------------------------------------------
+
+
+def test_runpod_2023_embedded_records_split_secure_community_and_spot():
+    rows = parse("runpod_20230929070808")
+    assert gpu_hour(pick(rows, "H100 SXM")) == [4.49]
+    assert gpu_hour(pick(rows, "H100 SXM", Commitment.COMMUNITY)) == [4.09]
+    assert gpu_hour(pick(rows, "H100 SXM", Commitment.SPOT)) == [2.49]
+    assert gpu_hour(pick(rows, "H100 PCIe")) == [4.29]
+    assert {r.gpu_count for r in rows} == {1}
+
+
+def test_runpod_2025_reads_the_row_attributes_not_the_script_filled_zero():
+    rows = parse("runpod_20250909131230")
+    assert gpu_hour(pick(rows, "H100 SXM")) == [2.69]
+    assert gpu_hour(pick(rows, "H100 PCIe")) == [2.39]
+    (nvl,) = pick(rows, "H100 NVL")
+    kept, dropped = restate([nvl])
+    assert not kept and dropped[0].code == "product_identity"
+
+
+def test_paperspace_skips_the_template_remnant_and_reads_the_footnote():
+    rows = parse("paperspace_20240123092147")
+    # The H100 card's "$3.09 / hour | NVIDIA A100 GPU" block is not read.
+    assert 3.09 not in {r.price_per_gpu_hour for r in rows}
+    (od,) = pick(rows, "H100 SXM")
+    assert od.price_per_gpu_hour == 6.00 and od.sku == "H100 (footnote)"
+    assert gpu_hour(pick(rows, "H100 SXM", Commitment.RESERVED)) == [2.24]

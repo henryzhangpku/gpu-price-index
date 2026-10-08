@@ -35,7 +35,9 @@ from .common import classify
 
 _NUM = re.compile(r"^(\d+(?:\.\d+)?)(\**)$")
 _FOOT_COMMIT = re.compile(r"(\*+)\s*\$(\d+(?:\.\d+)?)\s*/\s*hour pricing is for an? ([\w -]+?commitment)", re.I)
-_FOOT_OD = re.compile(r"on-demand pricing for (H100|H200|B200|A100[-\w]*) is \$(\d+(?:\.\d+)?)\s*/\s*hour", re.I)
+_FOOT_OD = re.compile(
+    r"on-demand pricing for (H100|H200|B200|A100[-\w]*) is \$(\d+(?:\.\d+)?)\s*(?:/|per)\s*hour", re.I
+)
 
 
 def _family(gpu_model: str) -> str:

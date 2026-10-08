@@ -322,3 +322,19 @@ def test_cached_gzip_is_a_pure_function_of_the_content(tmp_path):
     b = fetch_snapshot(_fetcher(handler), tmp_path / "b", "x", _cap("20250101000000"))
     assert a.read_bytes() == b.read_bytes()
     assert gzip.decompress(a.read_bytes()) == b"same bytes"
+
+
+def test_matched_change_ignores_entry_and_exit_and_needs_three_matches():
+    jan = [row(source=p, captured="20250115120000", per_gpu=v) for p, v in (("p1", 2.0), ("p2", 3.0), ("p3", 4.0))]
+    # p4 enters at a high price and p3 leaves: the level moves, the matched
+    # change is the median of p1 and p2's own moves... which is two, not three.
+    feb = [row(source=p, captured="20250215120000", per_gpu=v) for p, v in (("p1", 2.2), ("p2", 3.3), ("p4", 9.0))]
+    s = _series(jan + feb, periods=("2025-01", "2025-02"))
+    assert s[("2025-02", "GIX-H100")]["matched_providers"] == 2
+    assert s[("2025-02", "GIX-H100")]["matched_log_change"] == ""
+    mar = [row(source=p, captured="20250315120000", per_gpu=v) for p, v in (("p1", 2.2), ("p2", 3.3), ("p4", 9.9))]
+    s = _series(jan + feb + mar, periods=("2025-01", "2025-02", "2025-03"))
+    m = s[("2025-03", "GIX-H100")]
+    assert m["matched_providers"] == 3
+    # p1 and p2 unchanged, p4 up 10%: the median log change is zero.
+    assert float(m["matched_log_change"]) == pytest.approx(0.0)

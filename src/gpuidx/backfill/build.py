@@ -21,6 +21,7 @@ prices, not transactions; not the index":
 ``series/backfill_ratecards_weekly.csv``  weekly, ISO weeks named by Monday
 ``backfill/observations.csv``             every parsed row and what became of it
 ``backfill/manifest.csv``                 every snapshot: URL, hash, rows parsed
+``backfill/coverage.csv``                 provider x month: snapshots and quotes
 
 None of it is ever written into ``series/index_values.csv``.
 """
@@ -43,7 +44,7 @@ from .aggregate import (
     week_of,
     week_range,
 )
-from .records import RateCardRow
+from .records import BACKFILL_INDICES, RateCardRow
 from .restate import BACKFILL_METHODOLOGY_VERSION, restate
 from .sources import SOURCES, Source
 from .wayback import (
@@ -66,6 +67,9 @@ MONTHLY_NAME = "backfill_ratecards.csv"
 WEEKLY_NAME = "backfill_ratecards_weekly.csv"
 OBSERVATIONS_NAME = "observations.csv"
 MANIFEST_NAME = "manifest.csv"
+COVERAGE_NAME = "coverage.csv"
+
+COVERAGE_COLUMNS = ["source", "month", "snapshots", *BACKFILL_INDICES]
 
 MANIFEST_COLUMNS = [
     "source",
@@ -275,12 +279,40 @@ def build_outputs(root: Path, sources: list[Source] | None = None) -> dict[str, 
         obs_rows.append(d)
     obs_rows.sort(key=lambda d: (d["source"], d["captured"], d["sku"], d["commitment"], d["price_per_instance_hour"]))
 
+    coverage = coverage_rows(manifest, kept, months)
+
     return {
         f"series/{MONTHLY_NAME}": _csv_text(SERIES_COLUMNS, monthly),
         f"series/{WEEKLY_NAME}": _csv_text(SERIES_COLUMNS, weekly),
         f"{BACKFILL_DIR}/{OBSERVATIONS_NAME}": _csv_text(OBSERVATION_COLUMNS, obs_rows),
         f"{BACKFILL_DIR}/{MANIFEST_NAME}": _csv_text(MANIFEST_COLUMNS, manifest),
+        f"{BACKFILL_DIR}/{COVERAGE_NAME}": _csv_text(COVERAGE_COLUMNS, coverage),
     }
+
+
+def coverage_rows(manifest: list[dict], kept, months: list[str]) -> list[dict]:
+    """Provider x month: snapshots read, and restated on-demand quotes per index.
+
+    Every provider and month is written, zeros included, so the table is the
+    coverage statement docs/BACKFILL.md summarises rather than a list of the
+    places where something happened to be found.
+    """
+    snaps: dict[tuple[str, str], int] = {}
+    for m in manifest:
+        key = (m["source"], month_of(m["captured"]))
+        snaps[key] = snaps.get(key, 0) + 1
+    quotes: dict[tuple[str, str, str], int] = {}
+    for r in kept:
+        key = (r.row.source, r.row.month, r.index_code)
+        quotes[key] = quotes.get(key, 0) + 1
+    out = []
+    for src in SOURCES:
+        for month in months:
+            row = {"source": src.name, "month": month, "snapshots": snaps.get((src.name, month), 0)}
+            for code in BACKFILL_INDICES:
+                row[code] = quotes.get((src.name, month, code), 0)
+            out.append(row)
+    return out
 
 
 def build(root: Path, sources: list[Source] | None = None) -> BuildReport:
