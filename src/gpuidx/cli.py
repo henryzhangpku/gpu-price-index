@@ -11,6 +11,8 @@ about term structure (``forward``).
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -1824,6 +1826,94 @@ def weights_cmd(
     published = f"   [dim]published {est.value:.4f}[/]" if est.value is not None else ""
     console.print(f"    sum(w x price) / sum(w) = [bold cyan]{weighted:.4f}[/]{published}")
     console.print()
+
+
+@app.command("backfill")
+def backfill_cmd(
+    collect: bool = typer.Option(
+        False, "--collect", help="Fetch missing archive captures first (network; polite, cached)"
+    ),
+    source: list[str] = typer.Option(None, "--source", help="Limit --collect to these sources"),
+    splice: bool = typer.Option(
+        False, "--splice", help="Also compare the overlap with the live index"
+    ),
+    root: Path | None = typer.Option(None, help="Archive root"),
+) -> None:
+    """Rebuild the back-series reconstructed from archived public rate cards.
+
+    NOT THE INDEX. List prices read from Internet Archive captures of
+    providers' price pages, restated to each contract's standard good, one
+    vote per provider, median across providers. Writes
+    series/backfill_ratecards*.csv and never touches series/index_values.csv.
+    Without --collect it reads only the committed cache and makes no requests.
+    """
+    from .backfill import build as bf
+    from .backfill import splice as sp
+    from .backfill.sources import SOURCE_BY_NAME, SOURCES
+
+    target = root or ARCHIVE_ROOT
+    if collect:
+        chosen = [SOURCE_BY_NAME[s] for s in source] if source else SOURCES
+        bf.collect(target, chosen, log=lambda m: console.print(f"  {m}"))
+    with console.status("rebuilding from the archive cache..."):
+        report = bf.build(target)
+    console.print(
+        Panel(
+            f"snapshots  {report.snapshots}\n"
+            f"rows read  {report.rows}\n"
+            f"restated   {report.restated}\n"
+            f"discarded  {report.discarded}\n"
+            f"[dim]{bf.LABEL}[/]",
+            title="backfill",
+            expand=False,
+        )
+    )
+    monthly = (target / "series" / bf.MONTHLY_NAME).read_text(encoding="utf-8")
+    table = Table(box=box.SIMPLE, title="monthly, published periods per index")
+    table.add_column("index")
+    table.add_column("published", justify="right")
+    table.add_column("withheld", justify="right")
+    table.add_column("first", justify="right")
+    table.add_column("last", justify="right")
+    rows = list(csv.DictReader(io.StringIO(monthly)))
+    for code in sorted({r["index_code"] for r in rows}):
+        mine = [r for r in rows if r["index_code"] == code]
+        pub = [r["period"] for r in mine if r["status"] == "published"]
+        table.add_row(
+            code,
+            str(len(pub)),
+            str(len(mine) - len(pub)),
+            pub[0] if pub else "--",
+            pub[-1] if pub else "--",
+        )
+    console.print(table)
+
+    if splice:
+        weekly = (target / "series" / bf.WEEKLY_NAME).read_text(encoding="utf-8")
+        obs = (target / "backfill" / bf.OBSERVATIONS_NAME).read_text(encoding="utf-8")
+        with console.status("recomputing live provider medians for the overlap..."):
+            level, providers = sp.splice_tables(target, monthly, weekly, obs)
+        (target / "backfill" / "splice_level.csv").write_text(
+            sp.as_csv(sp.LEVEL_COLUMNS, level), encoding="utf-8", newline="\n"
+        )
+        (target / "backfill" / "splice_providers.csv").write_text(
+            sp.as_csv(sp.PROVIDER_COLUMNS, providers), encoding="utf-8", newline="\n"
+        )
+        t = Table(box=box.SIMPLE, title="overlap with the live index (not spliced)")
+        for col in ("granularity", "period", "index", "backfill", "prov", "live mean", "days", "live/bf"):
+            t.add_column(col, justify="right")
+        for r in level:
+            t.add_row(
+                r["granularity"],
+                r["period"],
+                r["index_code"],
+                r["backfill_value"] or "--",
+                str(r["backfill_providers"]),
+                r["live_mean"],
+                str(r["live_days"]),
+                r["ratio_live_to_backfill"] or "--",
+            )
+        console.print(t)
 
 
 if __name__ == "__main__":
