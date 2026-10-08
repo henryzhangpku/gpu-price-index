@@ -1,6 +1,6 @@
 # GPU Rental Price Index — Methodology
 
-**Version 1.0.0**
+**Version 1.2.0** (in force from its first fixing; section 12 lists every version)
 **Administrator:** reference implementation, not a live benchmark
 **Status:** demonstration. Do not settle anything against these values.
 
@@ -225,6 +225,18 @@ publish one global rate card without regional attribution are admitted, since
 excluding them would remove most of the rate-card tier; this is a known
 compromise and is recorded as such.
 
+**From 1.2.0 a disclosed region is US only if it says so in whole words.**
+One comma-separated component must be the country (`US`, `USA`,
+`United States`), or the string must be a cloud region identifier whose
+first token is `us` (`us-east-1`, `us-central1`) or an Azure US identifier
+(`eastus2`), or a component must be, word for word, an unambiguously US
+place (`spec.US_PLACE_NAMES`). Two-letter state codes are never read as US,
+because CA, GA, MD, IN and DE are also countries, and neither is Georgia.
+Anything else that was disclosed is screened. 1.0.0 and 1.1.0 matched US
+tokens as *substrings*, and `"us"` is inside `"australia"` and `"russia"`:
+81 Australian and 17 Russian rows were priced as US capacity (section 12,
+FINDINGS #14).
+
 ## 5. The waterfall
 
 Inputs are ranked by how much they prove, following the standard benchmark
@@ -324,7 +336,7 @@ index prints `withheld` with the failing gate recorded.
 | Contributing observations | ≥ 8 | yes |
 | Robust dispersion (MAD/median) | ≤ 0.45 | yes |
 | Executable input present | at least one tier 1 | no — off by default |
-| Marketplace book population | ≥ 4 distinct machines and ≥ 3 distinct hosts, per venue per index | yes, from 1.1.0 |
+| Marketplace book population | ≥ 4 distinct machines and ≥ 3 distinct hosts, per venue per index, counted on the rows that price the index | yes, from 1.1.0; counted after normalisation from 1.2.0 |
 
 The book-population floor is a gate on a *venue's seat* rather than on the
 index. A price list is one seller's statement and gets one vote. A marketplace
@@ -336,6 +348,18 @@ whose rows do not identify their machines cannot prove how many it recorded,
 and is held out rather than trusted. Every archived Vast.ai snapshot before
 1.1.0 is in that state, which is why a 1.1.0 recomputation of an earlier day
 prices without Vast.ai and is not what that day would have printed.
+
+**What is counted matters as much as the floor.** Under 1.1.0 the floor
+counted every row the venue listed under the index's model names, before
+normalisation -- German and Japanese machines, NVL cards, anything that
+would later be screened. On 6 October 2026 the Vast.ai H100 book passed at
+11 machines and 10 hosts while the rows that actually priced `GIX-H100` came
+from one machine on one host. From 1.2.0 the floor is applied after the
+region screen, the identity and currency screens and the adjustment cap, to
+exactly the rows whose prices make up the venue's median for that index.
+Below it the venue's vote is dropped from that index and the counts are
+written to the tape row's `venue_holdouts` cell; whether the index still
+publishes without it is for the other gates to say.
 
 The executable-input gate is implemented but disabled (`require_tier1` in
 `src/gpuidx/spec.py` defaults to false). With it off, a value resting entirely
@@ -641,3 +665,90 @@ Until the registry existed the second consequence was true and the first was
 impossible: the version was compared against one constant, so the first real
 methodology change would have made every prior value unverifiable at once.
 Finding #11 in `docs/FINDINGS.md` records how that was noticed.
+
+**A new version applies forward, and its back-test is published, not
+applied.** It takes effect from the first fixing a build carrying it
+publishes. Rows already on the tape are not revised to it, even where the
+new version exists because the old one was wrong: the revision mechanism in
+section 9 corrects a value that was wrong under the rules it was published
+under, and a 1.2.0 revision of a 1.1.0 row would splice two methodologies
+into one series with nothing on the tape to show the seam. What the new
+version would have done to the history is instead recomputed from the
+archive with `gpuidx impact <version>` and published as
+`docs/IMPACT-<version>.md`, so the size of the old error is on the record
+rather than absorbed into it.
+
+## 12. Changelog
+
+Each entry states what changed, why, and what it did to the numbers. The
+registered record for each version is in `spec.METHODOLOGIES`.
+
+### 1.2.0 — 8 October 2026
+
+**What changed.** Two defects in 1.1.0, both found while explaining the
+early-October `GIX-H100` move (FINDINGS #13; the defects and fixes are
+FINDINGS #14). Nothing else -- factors, estimator, gates' thresholds and the
+other screens are 1.1.0's, and a test asserts it.
+
+1. *Region matching is exact* (`Screens.exact_region`). 1.1.0 matched US
+   tokens as substrings, so `"Australia, AU"` and `"Russia, RU"` passed as
+   US because both contain `"us"`: 81 Australian and 17 Russian Vast.ai rows
+   across the archive. 1.2.0 reads a region as US only from a whole
+   component, a whole token or a whole place name (section 4). Across every
+   region string in the archive the new matcher disagrees with the old on
+   exactly those two and no others.
+2. *The marketplace floor is counted on the rows that price the index*
+   (`Gates.book_floor_basis = "priced"`). 1.1.0 counted the venue's whole
+   book before normalisation, so non-US machines and NVL cards carried a
+   one-machine vote over the floor (11 machines and 10 hosts counted on
+   6 October, one machine on one host priced). 1.2.0 applies the same four
+   machines and three hosts after the region screen and restatement; below
+   it the venue's vote is dropped and the reason is written to the new tape
+   column `venue_holdouts`, which `verify` checks along with the value.
+
+**History.** Applied forward, per section 11. No row published under 1.0.0
+or 1.1.0 is revised, and all 165 live values still verify under the version
+each one names.
+
+**Measured impact** (`gpuidx impact 1.2.0 --against 1.1.0`, the 12 fixings
+published under 1.1.0; full per-day tables in
+[docs/IMPACT-1.2.0.md](docs/IMPACT-1.2.0.md)):
+
+| Index | Fixings that would differ | Median move | Largest move |
+|---|---|---|---|
+| `GIX-H100` | 10 of 12 | 16.2% | -19.6% (1 Oct; $4.103 to $3.298) |
+| `GIX-H200` | 6 of 12 | 3.1% | -10.9% (8 Oct; $4.018 to $3.579) |
+| `GIX-A100` | 1 of 12 | -- | withheld to published $2.333 (17 Sep) |
+| `GIX-B200` | 0 of 12 | -- | -- |
+| `GIX-MI300X` | 0 of 12 | -- | -- |
+
+On the 21 fixings published under 1.0.0, 1.2.0 and 1.1.0 agree everywhere:
+those snapshots carry no Vast.ai machine ids, so both versions hold Vast.ai
+out as an unproven book and neither defect can reach the number. The
++32% region effect FINDINGS #13 reported for 10 September was measured
+under 1.0.0's rules and does not recur under 1.2.0. Against the tape as
+printed, including the 1.0.0 dates and so including everything 1.1.0
+changed as well, 1.2.0 would differ on 31 of 33 `GIX-H100` fixings, 24
+`GIX-H200`, 22 `GIX-A100` (16 of them withheld-to-published) and 16
+`GIX-B200`.
+
+The October `GIX-H100` level of about $3.9 becomes about $3.3, the level of
+the continuing rate cards.
+
+**Backfill.** The back-series (`series/backfill_ratecards*.csv`) stays
+pinned at 1.1.0. It shares `normalize`, but archived rate cards carry no
+region and no marketplace book, so neither fix could change a row; the
+committed CSVs rebuild byte for byte.
+
+### 1.1.0 — 16 September 2026
+
+The screens a broad panel turned out to need: product identity, teaser
+floors, quoted currency, the marketplace book floor, and jump corroboration;
+the estimator's position made a parameter (`robustness_band`, published at
+1.0, unchanged in value). FINDINGS #12 records what each did to the
+numbers. Its first fixing was 17 September.
+
+### 1.0.0 — 27 August 2026
+
+The launch methodology: weighted mean of per-provider medians, region and
+the adjustment cap as the only pre-normalisation screens.
