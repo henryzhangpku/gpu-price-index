@@ -589,13 +589,67 @@ machine was what was left.
 Neither defect is patched here. Both fixes (count the floor after
 normalisation; match region tokens on word boundaries) change published
 values, so they belong in a methodology version, and every historical row will
-keep reproducing under the version it names.
+keep reproducing under the version it names. *They are fixed in 1.2.0; see
+#14.*
 
 **Plain answer.** The early-October level of about $3.9 is not evidence that
 H100 rental got 25% more expensive. It is the same market priced through a
 different panel: an outlier screen that flipped on an unchanged quote, and a
 marketplace vote that came down to one host. The continuing rate cards say
 H100 on-demand list prices were flat at about $3.3 across the period.
+
+---
+
+## 14. Both defects behind #13, fixed in methodology 1.2.0
+
+**The region screen read Australia and Russia as the United States.** It
+asked whether `"us"` occurred anywhere in the region string, and it occurs
+in `"australia"` and `"russia"`. 81 Vast.ai rows from `Australia, AU` and 17
+from `Russia, RU` were priced as US capacity under 1.0.0 and 1.1.0. 1.2.0
+reads a region as US only from a whole thing: a comma-separated component
+that is the country (`Texas, US`, `US, Austin, TX`), a cloud region id whose
+first token is `us` (`us-west-2`), an Azure id such as `eastus2`, or an
+unambiguously US place name. State codes are never read as US -- CA is
+Canada and MD is Moldova -- and neither is a bare Georgia. Run over every
+region string in the archive, the new matcher disagrees with the old one on
+`Australia, AU` and `Russia, RU` and on nothing else.
+
+**The marketplace floor counted the wrong population.** It required four
+machines and three hosts per venue per index, but counted them over every
+row the venue listed under that GPU's names, before normalisation. Most of a
+Vast.ai H100 book is machines in Germany, Czechia or Japan and NVL cards, none
+of which can price `GIX-H100`, and they carried it over the floor: on
+6 October the floor saw 11 machines on 10 hosts and the vote it admitted was
+one machine on one host. 1.2.0 counts after the region screen and
+restatement, so the machines counted are exactly the ones whose prices form
+the venue's median. Below the floor the venue's vote is dropped from that
+index and the counts go on the tape, in a new `venue_holdouts` column that
+`verify` checks like a value.
+
+**What it does to the numbers.** Applied forward from 1.2.0's first fixing;
+nothing on the tape is revised. Back-tested over the twelve 1.1.0 fixings,
+`GIX-H100` would differ on ten, by up to -19.6%, and every October fixing it
+changes lands at $3.24-$3.35, the continuing-rate-card level #13 measured by
+hand. `GIX-H200` differs on six, by up to -10.9%; `GIX-A100` gains one print
+it had withheld; `GIX-B200` does not move. On the 1.0.0 dates nothing moves:
+those snapshots carry no machine ids, so 1.1.0 and 1.2.0 both hold Vast.ai
+out and neither defect can reach the value. `uv run gpuidx impact 1.2.0
+--against 1.1.0 --days` reproduces all of it; the tables are in
+[IMPACT-1.2.0.md](IMPACT-1.2.0.md).
+
+**The two fixes interact.** On 17 September the region fix alone would have
+raised `GIX-H100` 29%, because removing the cheap Australian and Russian
+rows left a thin, expensive US book. With the floor counted on that book,
+Vast.ai's vote is dropped and the move is +4.8%. Correcting the screen is
+what exposed how little was underneath it.
+
+**The general lesson.** Both defects were checks that ran and passed on the
+wrong thing: a substring that matched inside a longer word, and a count
+taken before the filter whose output it was meant to vouch for. Neither
+fails loudly. A check should be measured on the exact population it claims
+to certify, and the only way to find out that it is not is to diff the
+contributor list of one day under two rule sets, which is how #13 found
+both.
 
 ---
 

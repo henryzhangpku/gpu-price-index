@@ -133,11 +133,11 @@ flowchart TB
 | Test | Passes when | Why it exists |
 |---|---|---|
 | administered | the venue's SKUs do not all sit at one fixed ratio | a price that is a function of another price in the sample is a duplicate, not evidence |
-| book population | a marketplace's rows for an index span ≥ 4 machines and ≥ 3 hosts, and say so | a median over three boxes from one host is that host's rate card wearing a marketplace's name; a book that cannot prove its population is held out, not trusted |
+| book population | the marketplace rows that actually price an index, after the region screen and restatement, span ≥ 4 machines and ≥ 3 hosts, and say so | a median over three boxes from one host is that host's rate card wearing a marketplace's name; a book that cannot prove its population is held out, not trusted |
 | contract match | the venue's GPU string maps to exactly one benchmark | H100 NVL and H200 are one substring apart; a silent mismatch corrupts two indices |
 | product identity | the listing's own label and disclosed VRAM agree it is the contract's product | seventeen 40 GB A100s were being priced into the 80 GB index; a variant is rejected with the reason, never adjusted |
 | real rate, in USD | not a "from $X" teaser, and quoted in the benchmark's currency | a teaser is the floor of an unstated menu; a euro read as a dollar because the field says so is an assumption, not a record |
-| region | US, or the venue publishes no region at all | power and tax regimes are not a scalar, so region is screened rather than adjusted |
+| region | US in whole words (`Texas, US`, `us-west-2`), or the venue publishes no region at all | power and tax regimes are not a scalar, so region is screened rather than adjusted |
 | 1.75x cap | form factor, fabric, commitment and node size multiply to 1.75 or less | past that the number describes the adjustment schedule rather than the market |
 | 3 robust sigma | the provider sits near the cross-provider median | MAD has a 50% breakdown point, so the screen cannot be defeated by the outlier it catches |
 
@@ -145,6 +145,9 @@ Every one of these is a property of a **registered methodology version**, not
 of the code that happens to be checked out. A value published under 1.0.0 is
 recomputed under 1.0.0 -- no book floor, no identity screen, the plain
 weighted mean -- for as long as the archive exists, and `verify` says so.
+A new version applies forward from its first fixing; what it would have done
+to the history is published beside it rather than written over it
+([docs/IMPACT-1.2.0.md](docs/IMPACT-1.2.0.md), from `gpuidx impact 1.2.0`).
 
 Note where `withheld` goes. A refusal to print is written to the tape as a row
 like any other, carrying the gate that caused it. A gap in the series is a
