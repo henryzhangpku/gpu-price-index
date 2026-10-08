@@ -25,6 +25,7 @@ def register(name: str):
 
 
 from . import (  # noqa: E402,F401
+    coreweave,
     crusoe,
     datacrunch,
     digitalocean,
@@ -32,6 +33,7 @@ from . import (  # noqa: E402,F401
     hyperstack,
     lambda_,
     nebius,
+    paperspace,
     runpod,
     voltagepark,
 )

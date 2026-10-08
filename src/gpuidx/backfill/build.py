@@ -209,7 +209,9 @@ def parse_all(root: Path, sources: list[Source] | None = None):
         for c in _chosen(root, source):
             path = snapshot_path(root, source.name, c)
             body = read_cached(path)
-            parsed = source.parse(body, c.timestamp)
+            # A page that repeats a table (desktop and mobile copies) states
+            # each price once; identical rows within a snapshot collapse.
+            parsed = list(dict.fromkeys(source.parse(body, c.timestamp)))
             in_scope = [r for r in parsed if r.gpu_model]
             rows.extend(parsed)
             manifest.append(

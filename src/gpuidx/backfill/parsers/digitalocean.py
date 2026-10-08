@@ -22,7 +22,7 @@ from ..records import RateCardRow
 from . import register
 from .common import classify, price_in
 
-_LABEL = re.compile(r"^NVIDIA\s+(.+?)(?:\s?x\s?(\d))?$", re.I)
+_LABEL = re.compile(r"^NVIDIA\s+(.+?)(?:\s?[x\u00d7]\s?(\d))?$", re.I)
 _PRICE = re.compile(r"^\$\s?\d+(?:\.\d+)?$")
 
 
@@ -44,7 +44,7 @@ def parse(body: bytes, captured: str, source: str) -> list[RateCardRow]:
             c = cs[j]
             if _PRICE.match(c):
                 prices.append(c)
-            elif c.lower().endswith("price"):
+            elif c.lower().rstrip("*").endswith("price"):
                 kind = c
                 break
             elif not c.lower().startswith("/gpu"):
@@ -62,6 +62,8 @@ def parse(body: bytes, captured: str, source: str) -> list[RateCardRow]:
             commitment = Commitment.RESERVED
         elif "on-demand" in k or "on demand" in k:
             commitment = Commitment.ON_DEMAND
+        elif "spot" in k:
+            commitment = Commitment.SPOT
         else:
             continue
         price = price_in(prices[-1])

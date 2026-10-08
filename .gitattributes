@@ -1,0 +1,8 @@
+# The backfill's committed outputs are compared byte for byte against a
+# rebuild from the archive cache (tests/test_backfill_artifacts.py), so they
+# keep LF line endings on every checkout, and the cached captures are bytes.
+series/backfill_ratecards*.csv text eol=lf
+backfill/*.csv text eol=lf
+backfill/cdx/*.json text eol=lf
+backfill/archive/** binary
+tests/fixtures/backfill/*.html text eol=lf

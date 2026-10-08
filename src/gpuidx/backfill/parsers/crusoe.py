@@ -21,6 +21,7 @@ from .common import classify
 from .tables import PLACEHOLDER, commitment_of
 
 _NUM = re.compile(r"^\d+(?:\.\d+)?$")
+_ONE_CELL = re.compile(r"^\$\s?(\d+(?:\.\d+)?)\s?/\s?(?:gpu-?hr|hr|hour)$", re.I)
 _VRAM = re.compile(r"^(\d{2,3})\s?GB$", re.I)
 
 
@@ -55,7 +56,7 @@ def parse(body: bytes, captured: str, source: str) -> list[RateCardRow]:
         while j < len(cs) and j <= i + 3:
             if _VRAM.match(cs[j]):
                 vram = int(_VRAM.match(cs[j]).group(1))
-            elif cs[j].upper() in ("SXM", "PCIE", "OAM", "NVL"):
+            elif cs[j].upper() in ("SXM", "PCIE", "OAM", "NVL", "HGX", "NVL72"):
                 form = cs[j]
             else:
                 break
@@ -66,6 +67,9 @@ def parse(body: bytes, captured: str, source: str) -> list[RateCardRow]:
             if cs[j] == "$" and j + 1 < len(cs) and _NUM.match(cs[j + 1]):
                 slots.append(float(cs[j + 1]))
                 j += 3 if j + 2 < len(cs) and cs[j + 2].startswith("/") else 2
+            elif _ONE_CELL.match(cs[j]):
+                slots.append(float(_ONE_CELL.match(cs[j]).group(1)))
+                j += 1
             elif PLACEHOLDER.match(cs[j]):
                 slots.append(None)
                 j += 1
