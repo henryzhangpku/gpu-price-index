@@ -12,14 +12,13 @@ the publication gates then account for.
 
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 
 import httpx
 
 from ..models import FormFactor, Interconnect, RawObservation
-from ..spec import US_REGION_TOKENS
+from ..normalize import region_is_us
 
 USER_AGENT = "gpuidx/0.1 (benchmark reference implementation)"
 TIMEOUT = httpx.Timeout(30.0, connect=10.0)
@@ -74,12 +73,13 @@ class Provider(ABC):
         """Return True/False, or None when the venue does not disclose region.
 
         The tri-state matters: an undisclosed region is screened differently
-        from a disclosed non-US one.
+        from a disclosed non-US one. No adapter calls this; it delegates to
+        the exact matcher the 1.2.0 screen uses, so that it cannot carry the
+        substring defect that read "Australia" as US.
         """
-        if not region:
+        if not region or not region.strip():
             return None
-        blob = re.sub(r"[_\-/]", " ", region).lower()
-        return any(tok in blob for tok in US_REGION_TOKENS)
+        return region_is_us(region)
 
 
 def make_client() -> httpx.Client:

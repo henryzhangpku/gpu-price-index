@@ -1103,9 +1103,7 @@ def explain_cmd(
     from collections import Counter
 
     from .archive import SNAPSHOT_DIR, read_snapshot, read_tape
-    from .calibrate import drop_administered
     from .estimator import estimate as run_estimate
-    from .normalize import normalize_all
 
     rows = [
         r
@@ -1123,17 +1121,23 @@ def explain_cmd(
         console.print(f"[yellow]inputs unavailable: {snapshot or 'no snapshot named'}[/]")
         raise typer.Exit(1)
 
-    from .normalize import hold_out_thin_books
+    from .normalize import prepare
     from .spec import methodology_for
 
     # Under the version the row names, as verify does; explaining a 1.0.0
     # value with 1.1.0 screens would narrate a number that was never printed.
     methodology = methodology_for(row.get("methodology_version") or "") or CURRENT_METHODOLOGY
     observations = read_snapshot(path).observations
-    informative, admin_flags = drop_administered(observations)
-    populated, book_flags = hold_out_thin_books(informative, methodology)
-    admin_flags = admin_flags + book_flags
-    quotes, reject_flags = normalize_all(populated, methodology)
+    prepared = prepare(observations, methodology)
+    informative = prepared.informative
+    admin_flags = prepared.administered_flags
+    book_flags = prepared.book_flags
+    if prepared.held_quotes == 0:
+        # Under 1.1.0 the floor holds out raw rows before normalisation, so
+        # it reads as part of the same pre-screen step.
+        admin_flags = admin_flags + book_flags
+    reject_flags = prepared.rejection_flags
+    quotes = prepared.quotes
     mine = [q for q in quotes if q.index_code == index_code]
     est = run_estimate(index_code, mine, methodology)
 
@@ -1184,6 +1188,11 @@ def explain_cmd(
         )
     for code, count in sorted(rejected.items(), key=lambda kv: -kv[1]):
         funnel.add_row(code.replace("_", " "), f"[red]-{count}[/]", reasons.get(code, ""))
+    if prepared.held_quotes:
+        funnel.add_row(
+            "book floor", f"[red]-{prepared.held_quotes}[/]",
+            "; ".join(f.detail for f in book_flags),
+        )
     funnel.add_row("normalised", f"[bold green]{len(quotes)}[/]", "[dim]across all five indices[/]")
     funnel.add_row(f"for {index_code}", f"[bold green]{len(mine)}[/]", "[dim]this index only[/]")
     console.print(funnel)

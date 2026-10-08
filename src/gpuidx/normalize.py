@@ -19,6 +19,9 @@ Design rules:
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
+
 from .models import (
     Adjustment,
     Commitment,
@@ -34,6 +37,9 @@ from .spec import (
     CONTRACTS,
     CURRENT_METHODOLOGY,
     PRODUCT_IDENTITY_RULES,
+    US_CLOUD_REGION_PATTERN,
+    US_COUNTRY_NAMES,
+    US_PLACE_NAMES,
     US_REGION_TOKENS,
     VRAM_TOLERANCE,
     BenchmarkContract,
@@ -77,20 +83,70 @@ def match_contract(obs: RawObservation) -> BenchmarkContract | None:
     return best[1] if best else None
 
 
-def _region_ok(obs: RawObservation, contract: BenchmarkContract) -> bool:
+def _region_ok(
+    obs: RawObservation, contract: BenchmarkContract, exact: bool = False
+) -> bool:
     """Screen on region. Undisclosed region is tolerated, foreign is not.
 
     Venues that publish a single global rate card do not attribute a region
     to a price. Discarding them would drop most of the rate-card tier, so
     they are admitted; a *disclosed* non-US region is a known mismatch and is
     discarded, because power and tax regimes are not a scalar.
+
+    ``exact`` selects the 1.2.0 matcher. Without it the 1.0.0/1.1.0 substring
+    test runs, unchanged, because values were published under it.
     """
     if contract.region != "US":
         return True
     if obs.region is None:
         return True
+    if exact:
+        return not obs.region.strip() or region_is_us(obs.region)
     blob = obs.region.replace("_", " ").replace("-", " ").replace("/", " ").lower()
     return any(token in blob for token in US_REGION_TOKENS)
+
+
+_CLOUD_REGION = re.compile(rf"^{US_CLOUD_REGION_PATTERN}$")
+
+
+def _words(text: str) -> list[str]:
+    return re.sub(r"[_\-/.]", " ", text).lower().split()
+
+
+def region_is_us(region: str) -> bool:
+    """Whether a disclosed region string places the capacity in the US.
+
+    Matches whole things, never substrings -- the 1.0.0 test asked whether
+    ``"us"`` occurred anywhere in the string, and it occurs in ``"australia"``
+    and ``"russia"``. Three readings, any one of which suffices:
+
+    1. **A comma-separated component that is the country.** ``"Texas, US"``
+       and ``"US, Austin, TX"`` both carry ``US`` as a whole component, in
+       either order. ``"Australia, AU"`` and ``"Alberta, CA"`` do not.
+    2. **A cloud region identifier whose first token is the country**, as
+       AWS and GCP write them -- ``us-east-1``, ``us-central1``, ``US-East``
+       -- or an Azure identifier such as ``eastus2``, matched as a whole
+       token.
+    3. **A component that is, word for word, an unambiguously US place**
+       from ``spec.US_PLACE_NAMES``. Two-letter state codes are never read
+       as US: CA is Canada and MD is Moldova as often as not.
+
+    Anything else that was disclosed is not shown to be US, and is screened.
+    """
+    components = [c.strip().lower() for c in region.split(",")]
+    if any(c in US_COUNTRY_NAMES for c in components):
+        return True
+    for component in components:
+        words = _words(component)
+        if not words:
+            continue
+        if words[0] in ("us", "usa"):
+            return True
+        if any(_CLOUD_REGION.match(w) for w in words):
+            return True
+        if " ".join(words) in US_PLACE_NAMES:
+            return True
+    return False
 
 
 def _label_tokens(gpu_model: str) -> set[str]:
@@ -173,7 +229,7 @@ def normalize(
         if why is not None:
             raise Rejection("product_identity", why)
 
-    if not _region_ok(obs, contract):
+    if not _region_ok(obs, contract, exact=screens.exact_region):
         raise Rejection("region_mismatch", f"{obs.region!r} outside {contract.region}")
 
     price = obs.usd_per_gpu_hour
@@ -265,14 +321,67 @@ def prepare_quotes(
     irreproducible from its own archive -- which ``gpuidx verify`` caught, but
     only because the check existed. One function removes the possibility.
     """
+    prepared = prepare(observations, methodology)
+    return prepared.quotes, prepared.flags
+
+
+@dataclass
+class Prepared:
+    """Every stage of ``prepare_quotes``, kept apart so ``explain`` can narrate it."""
+
+    #: What survived the administered-pricing check.
+    informative: list[RawObservation]
+    administered_flags: list[QualityFlag]
+    book_flags: list[QualityFlag]
+    rejection_flags: list[QualityFlag]
+    #: The index inputs.
+    quotes: list[NormalizedQuote]
+    #: Restated quotes the 1.2.0 marketplace floor then held out. Under 1.1.0
+    #: the floor ran before normalisation and held out raw rows instead.
+    held_quotes: int = 0
+
+    @property
+    def flags(self) -> list[QualityFlag]:
+        return self.administered_flags + self.book_flags + self.rejection_flags
+
+
+def prepare(
+    observations: list[RawObservation],
+    methodology: Methodology = CURRENT_METHODOLOGY,
+) -> Prepared:
+    """``prepare_quotes`` with its intermediate stages exposed.
+
+    Where the marketplace floor sits is a property of the version. Under
+    1.1.0 it counts the venue's whole book before anything is screened; from
+    1.2.0 it counts only the rows that survived the region screen and
+    restatement for that index, which is the population the venue's vote is
+    actually a median of.
+    """
     # Imported here rather than at module scope: calibrate imports spec, and
     # spec imports models, so a top-level import would close a cycle.
     from .calibrate import drop_administered
 
     informative, administered_flags = drop_administered(observations)
+    if methodology.gates.book_floor_basis == "priced":
+        pairs, rejection_flags = _normalize_pairs(informative, methodology)
+        kept, book_flags = hold_out_thin_priced_books(pairs, methodology)
+        return Prepared(
+            informative=informative,
+            administered_flags=administered_flags,
+            book_flags=book_flags,
+            rejection_flags=rejection_flags,
+            quotes=kept,
+            held_quotes=len(pairs) - len(kept),
+        )
     populated, book_flags = hold_out_thin_books(informative, methodology)
     quotes, rejection_flags = normalize_all(populated, methodology)
-    return quotes, administered_flags + book_flags + rejection_flags
+    return Prepared(
+        informative=informative,
+        administered_flags=administered_flags,
+        book_flags=book_flags,
+        rejection_flags=rejection_flags,
+        quotes=quotes,
+    )
 
 
 def is_book(obs: RawObservation) -> bool:
@@ -382,8 +491,30 @@ def normalize_all(
             quotes.append(normalize(obs, methodology))
         except Rejection as rej:
             rejections[rej.code] = rejections.get(rej.code, 0) + 1
+    return quotes, _rejection_flags(rejections)
 
-    flags = [
+
+def _normalize_pairs(
+    observations: list[RawObservation],
+    methodology: Methodology,
+) -> tuple[list[tuple[RawObservation, NormalizedQuote]], list[QualityFlag]]:
+    """``normalize_all``, keeping each quote beside the row it came from.
+
+    The 1.2.0 floor needs the machine and host a quote was priced from, and
+    those live on the raw row rather than on the restated quote.
+    """
+    pairs: list[tuple[RawObservation, NormalizedQuote]] = []
+    rejections: dict[str, int] = {}
+    for obs in observations:
+        try:
+            pairs.append((obs, normalize(obs, methodology)))
+        except Rejection as rej:
+            rejections[rej.code] = rejections.get(rej.code, 0) + 1
+    return pairs, _rejection_flags(rejections)
+
+
+def _rejection_flags(rejections: dict[str, int]) -> list[QualityFlag]:
+    return [
         QualityFlag(
             severity="info" if code in QUIET_REJECTIONS else "warn",
             code=f"rejected_{code}",
@@ -391,7 +522,87 @@ def normalize_all(
         )
         for code, count in sorted(rejections.items())
     ]
-    return quotes, flags
+
+
+def hold_out_thin_priced_books(
+    pairs: list[tuple[RawObservation, NormalizedQuote]],
+    methodology: Methodology = CURRENT_METHODOLOGY,
+) -> tuple[list[NormalizedQuote], list[QualityFlag]]:
+    """The 1.2.0 floor: count the sellers a marketplace's vote is actually made of.
+
+    ``hold_out_thin_books`` counts every row the venue listed under the
+    index's model names, before anything is screened. Most of a Vast.ai H100
+    book is German, Czech or Japanese machines and NVL cards, none of which
+    can price ``GIX-H100``, and they are what carried the book over the floor:
+    on 6 October 2026 it passed at 11 machines and 10 hosts while the rows
+    actually priced came from one machine on one host.
+
+    Here the floor is applied to the restated quotes -- after the region
+    screen, the identity screen, the currency check and the adjustment cap --
+    so the machines and hosts counted are exactly the ones whose prices form
+    the venue's median for that index. Below either floor the venue's vote is
+    dropped from that index, with the priced counts recorded; whether the
+    index still publishes is then for the ordinary gates to say. Rows that do
+    not identify their machine still fail closed.
+    """
+    gates = methodology.gates
+    quotes = [q for _, q in pairs]
+    if gates.min_book_machines <= 0 and gates.min_book_hosts <= 0:
+        return quotes, []
+
+    rows: dict[tuple[str, str], int] = {}
+    machines: dict[tuple[str, str], set] = {}
+    hosts: dict[tuple[str, str], set] = {}
+    for obs, quote in pairs:
+        if not is_book(obs):
+            continue
+        key = (obs.source, quote.index_code)
+        rows[key] = rows.get(key, 0) + 1
+        m = obs.payload.get("machine_id")
+        h = obs.payload.get("host_id")
+        if m is not None:
+            machines.setdefault(key, set()).add(m)
+        if h is not None:
+            hosts.setdefault(key, set()).add(h)
+
+    held: dict[tuple[str, str], str] = {}
+    for key, n in rows.items():
+        m = len(machines.get(key, ()))
+        h = len(hosts.get(key, ()))
+        if key not in machines and key not in hosts:
+            held[key] = (
+                f"none of its {n} priced rows identify a machine or host, "
+                "so the population is unproven"
+            )
+        elif gates.min_book_machines > 0 and m < gates.min_book_machines:
+            held[key] = (
+                f"{m} distinct machines of {gates.min_book_machines} required "
+                f"across {n} priced rows"
+            )
+        elif gates.min_book_hosts > 0 and h < gates.min_book_hosts:
+            held[key] = (
+                f"{h} distinct hosts of {gates.min_book_hosts} required "
+                f"across {n} priced rows"
+            )
+
+    if not held:
+        return quotes, []
+
+    kept = [q for o, q in pairs if not (is_book(o) and (o.source, q.index_code) in held)]
+    flags = [
+        QualityFlag(
+            severity="warn",
+            code="book_population_floor",
+            index_code=index_code,
+            detail=(
+                f"{source} held out of {index_code}: {why} after the region screen "
+                "and restatement; a median over that few sellers is one seller's "
+                "rate card wearing a marketplace's name"
+            ),
+        )
+        for (source, index_code), why in sorted(held.items())
+    ]
+    return kept, flags
 
 
 #: Rejections that are the normal state of a broad feed rather than a warning:

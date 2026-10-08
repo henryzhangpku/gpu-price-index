@@ -8,6 +8,8 @@ what a settlement dispute would actually be argued over.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from .models import Commitment, FormFactor, Interconnect
@@ -261,6 +263,13 @@ AMBIGUOUS_LABELS = ("A100", "H100", "MI300")
 # Region is carried for screening rather than adjustment: cross-border price
 # differences reflect power, tax, and latency regimes that a single scalar
 # cannot honestly collapse. Non-benchmark regions are screened out instead.
+#
+# THIS TUPLE IS MATCHED AS SUBSTRINGS UNDER 1.0.0 AND 1.1.0, AND THAT WAS A
+# DEFECT. "us" is a substring of "australia" and "russia", so 81 Australian
+# and 17 Russian Vast.ai rows were admitted as US capacity (FINDINGS #13,
+# #14). It is kept, unchanged, because those two versions published values
+# under it and must keep reproducing them. From 1.2.0 the screen matches whole
+# components and tokens against the allow-lists below instead.
 US_REGION_TOKENS = (
     "us", "usa", "united states", "america", "virginia", "texas", "iowa",
     "kansas", "utah", "oregon", "california", "arizona", "georgia", "ohio",
@@ -269,6 +278,45 @@ US_REGION_TOKENS = (
     "santa clara", "los angeles", "san jose", "des moines", "kansas city",
     "north carolina", "new york", "salt lake",
 )
+
+#: A whole comma-separated component that names the United States. Venues
+#: write a location as ``"State, CC"`` (Vast.ai) or ``"CC, City, ST"``
+#: (Shadeform), so the country is one component in either order, and it is
+#: matched exactly or not at all.
+US_COUNTRY_NAMES: frozenset[str] = frozenset(
+    {"us", "usa", "u.s.", "u.s.a.", "united states", "united states of america"}
+)
+
+#: Whole-word place names that are only ever in the United States, for a
+#: region a venue writes without a country. Deliberately excludes every name
+#: that is also a country or a foreign place -- Georgia above all -- and every
+#: two-letter state code, because CA, GA, IN, MD, DE and a dozen others are
+#: also ISO country codes. A disclosed region that names nothing on these
+#: lists is screened out: an unprovable location is not the benchmark's.
+US_PLACE_NAMES: frozenset[str] = frozenset(
+    {
+        # states, less Georgia
+        "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+        "connecticut", "delaware", "florida", "hawaii", "idaho", "illinois",
+        "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine", "maryland",
+        "massachusetts", "michigan", "minnesota", "mississippi", "missouri",
+        "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+        "new mexico", "new york", "north carolina", "north dakota", "ohio",
+        "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina",
+        "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
+        "washington", "west virginia", "wisconsin", "wyoming",
+        "district of columbia",
+        # datacentre metros named in the archive or the 1.0.0 token list
+        "ashburn", "atlanta", "chicago", "dallas", "denver", "des moines",
+        "kansas city", "los angeles", "phoenix", "salt lake city", "san jose",
+        "santa clara", "seattle", "silicon valley",
+    }
+)
+
+#: Cloud region identifiers with no separator before the country, as Azure
+#: writes them: ``eastus``, ``westus2``, ``southcentralus``. Matched as a
+#: whole token against this pattern, never as a substring of a longer word.
+US_CLOUD_REGION_PATTERN = r"(east|west|central|north|south|northcentral|southcentral|westcentral)us\d*"
 
 #: An input requiring more than this much cumulative adjustment is too far
 #: from the benchmark good to be evidence about it, and is discarded.
@@ -305,6 +353,16 @@ class Gates(BaseModel):
     #: Minimum distinct hosts behind those machines. One host offering forty
     #: boxes is one seller, however many rows it produces.
     min_book_hosts: int = 0
+    #: Which population the two floors above are counted over.
+    #:
+    #: ``"book"`` (1.1.0) counts every row the venue listed under the index's
+    #: model names, before normalisation -- including non-US machines and
+    #: variant cards that can never price the index. That was a defect: on
+    #: 6 October 2026 the Vast.ai H100 book passed at 11 machines and 10 hosts
+    #: while the rows actually priced were one machine on one host (FINDINGS
+    #: #13). ``"priced"`` (from 1.2.0) counts only the rows that survived every
+    #: screen and restatement and so actually make up the venue's vote.
+    book_floor_basis: Literal["book", "priced"] = "book"
 
 
 class EstimatorParams(BaseModel):
@@ -364,6 +422,10 @@ class Screens(BaseModel):
     #: A large single-contributor move with no corroboration from the rest of
     #: the panel is flagged as a probable glitch rather than a repricing.
     jump_corroboration: bool = False
+    #: Match a disclosed region against whole components and tokens rather
+    #: than as substrings. Off under 1.0.0 and 1.1.0, which read "Australia"
+    #: and "Russia" as US because both contain "us".
+    exact_region: bool = False
 
 
 class Methodology(BaseModel):
@@ -427,10 +489,29 @@ METHODOLOGIES: dict[str, Methodology] = {
             jump_corroboration=True,
         ),
     ),
+    # 2026-10-08. Two defects in 1.1.0, both found by FINDINGS #13 and fixed
+    # here, forward only. The region screen matches whole components and
+    # tokens, so Australia and Russia stop counting as the United States; and
+    # the marketplace book floor is counted over the rows that actually price
+    # the index, after the region screen and restatement, rather than over
+    # the venue's whole book. Everything else is 1.1.0 unchanged. See
+    # METHODOLOGY section 12 and docs/IMPACT-1.2.0.md for the back-test.
+    "1.2.0": Methodology(
+        version="1.2.0",
+        gates=Gates(min_book_machines=4, min_book_hosts=3, book_floor_basis="priced"),
+        estimator=EstimatorParams(robustness_band=1.0, sigma_floor=0.03, sigma_ceiling=0.50),
+        screens=Screens(
+            exclude_from_floor=True,
+            product_identity=True,
+            require_quoted_currency=True,
+            jump_corroboration=True,
+            exact_region=True,
+        ),
+    ),
 }
 
 #: The methodology new fixings are published under.
-CURRENT_METHODOLOGY = METHODOLOGIES["1.1.0"]
+CURRENT_METHODOLOGY = METHODOLOGIES["1.2.0"]
 
 #: Retained because most call sites only care about the gates. Always the
 #: current methodology gates -- never construct ``Gates()`` directly for
