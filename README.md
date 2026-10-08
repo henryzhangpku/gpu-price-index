@@ -278,6 +278,7 @@ uv run gpuidx forward --spot 3.05          # what committed-use discounts do and
 uv run gpuidx strip 1=2.00 2=1.90 3=1.80    # strip term quotes into per-month forwards
 uv run gpuidx sensitivity                  # how much of each fixing rests on judgement
 uv run gpuidx export-web                   # dump the archive as JSON for the demo site
+uv run gpuidx backfill                     # rebuild the archived-rate-card back-series (not the index)
 ```
 
 `explain` is the one worth looking at. `audit` shows the providers behind a
@@ -400,15 +401,27 @@ third-party aggregators and flagged as lower confidence. Everything here is
 dropped after 45 days, so a forgotten catalogue degrades into missing data
 rather than into a confidently wrong number.
 
+### A separate back-series, which is not the index
+
+`gpuidx backfill` reconstructs January 2023 to September 2026 from Internet
+Archive captures of eleven providers' public price pages, restated through the
+same normaliser and written to `series/backfill_ratecards*.csv` -- never to the
+tape. It is list prices read from archived HTML, not transactions and not the
+index, and every row says so. That is the one place this repository reads web
+pages rather than endpoints, and it reads the archive's copies, not the
+providers' sites. Sources, coverage, rules, biases and what it must not be
+used for: [docs/BACKFILL.md](docs/BACKFILL.md).
+
 ## Layout
 
 ```
 src/gpuidx/     the package — see "How the code is arranged" above for the
                 layering, the type chain and what each module owns
 web/            the static demo site; reads the export, computes nothing
-docs/           METHODOLOGY.md, FINDINGS.md
+docs/           METHODOLOGY.md, FINDINGS.md, BACKFILL.md
 snapshots/      immutable captures of what each venue said, per run
-series/         the exported tape
+series/         the exported tape, and the separate backfill_ratecards*.csv
+backfill/       the back-series' archive cache, capture listings and manifests
 tests/          the suite, including the property tests over generated markets
 ```
 

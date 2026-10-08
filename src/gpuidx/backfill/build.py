@@ -175,7 +175,9 @@ def collect(root: Path, sources: list[Source] | None = None, log=print) -> None:
                 continue
             payload["listings"][url] = rows
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(payload, indent=0, sort_keys=True), encoding="utf-8")
+            path.write_text(
+                json.dumps(payload, indent=0, sort_keys=True), encoding="utf-8", newline="\n"
+            )
         captures = load_listing(root, source) or []
         fetched = 0
         for candidates in select(captures, source):
