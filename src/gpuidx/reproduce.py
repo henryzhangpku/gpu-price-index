@@ -335,6 +335,84 @@ def estimate_from_archive(
     return estimate(index_code, relevant, methodology), name
 
 
+@dataclass
+class ImpactRow:
+    """One live fixing, as published and as another methodology would price it."""
+
+    index_code: str
+    index_date: str
+    published_version: str
+    #: The value the comparison is made against: the tape's own value, or a
+    #: recomputation under ``against`` when one is given. None == withheld.
+    baseline: float | None
+    #: The same snapshot under the target methodology. None == withheld.
+    recomputed: float | None
+
+    @property
+    def differs(self) -> bool:
+        if self.baseline is None or self.recomputed is None:
+            # Withheld on one side only is a difference; on both it is not.
+            return (self.baseline is None) != (self.recomputed is None)
+        return abs(self.recomputed - self.baseline) > TOLERANCE
+
+    @property
+    def change(self) -> float | None:
+        """Relative change from baseline, when both sides published."""
+        if self.baseline is None or self.recomputed is None or self.baseline == 0:
+            return None
+        return self.recomputed / self.baseline - 1.0
+
+
+def version_impact(
+    root: Path, target: Methodology, against: Methodology | None = None
+) -> list[ImpactRow]:
+    """What every live fixing would have been under ``target``.
+
+    This is the back-test a methodology change publishes rather than applies.
+    Each live tape row is recomputed from the exact snapshot it names under
+    ``target`` and set beside the value the tape carries -- or, with
+    ``against``, beside a recomputation of the same snapshot under that
+    methodology, which isolates one change from everything the versions
+    between them also changed. Nothing is written: a back-test is a document,
+    not a revision.
+    """
+    available = {path.name: path for path in list_snapshots(root)}
+    cache: dict[tuple[str, str], tuple[list, list]] = {}
+    observations: dict[str, list] = {}
+
+    def prepared(name: str, methodology: Methodology) -> list:
+        key = (name, methodology.model_dump_json())
+        if key not in cache:
+            if name not in observations:
+                observations[name] = read_snapshot(available[name]).observations
+            cache[key] = prepare_quotes(observations[name], methodology)
+        return cache[key][0]
+
+    def value(name: str, index_code: str, methodology: Methodology) -> float | None:
+        quotes = [q for q in prepared(name, methodology) if q.index_code == index_code]
+        est = estimate(index_code, quotes, methodology)
+        return est.value if est.passed else None
+
+    out: list[ImpactRow] = []
+    for (index_code, index_date), row in sorted(live_tape_values(root).items()):
+        name = (row.get("snapshot") or "").strip()
+        if not name or name not in available:
+            continue
+        baseline = (
+            _as_float(row["value"]) if against is None else value(name, index_code, against)
+        )
+        out.append(
+            ImpactRow(
+                index_code=index_code,
+                index_date=index_date,
+                published_version=row["methodology_version"],
+                baseline=baseline,
+                recomputed=value(name, index_code, target),
+            )
+        )
+    return out
+
+
 def _as_float(value: str | None) -> float | None:
     if value in (None, ""):
         return None

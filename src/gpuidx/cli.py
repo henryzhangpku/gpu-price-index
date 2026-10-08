@@ -1574,6 +1574,90 @@ def robustness_cmd(
     )
 
 
+@app.command("impact")
+def impact_cmd(
+    version: str = typer.Argument(..., help="Registered methodology to back-test"),
+    against: str = typer.Option(
+        "",
+        help="Recompute the baseline under this version instead of reading the tape's value",
+    ),
+    days: bool = typer.Option(False, "--days", help="List every fixing that would differ"),
+) -> None:
+    """Back-test a methodology version across every archived fixing.
+
+    A methodology change applies from its first fixing and never restates the
+    tape (METHODOLOGY section 11). What it would have done to the history is
+    published instead, and this is the command that produces it: each live
+    fixing is recomputed from its own snapshot under ``version`` and set
+    beside what the tape printed -- or, with ``--against``, beside the same
+    snapshot under another version, which isolates one change from the
+    others between them. Nothing is written.
+    """
+    import statistics
+
+    from .reproduce import version_impact
+    from .spec import methodology_for
+
+    target = methodology_for(version)
+    base = methodology_for(against) if against else None
+    if target is None or (against and base is None):
+        console.print(f"[red]unregistered methodology: {version if target is None else against}[/]")
+        raise typer.Exit(2)
+
+    rows = version_impact(ARCHIVE_ROOT, target, base)
+    baseline_label = f"recomputed under {against}" if against else "as published"
+
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+    for column, justify in (
+        ("index", "left"), ("fixings", "right"), ("differ", "right"),
+        ("flips", "right"), ("median |move|", "right"), ("largest move", "right"),
+    ):
+        table.add_column(column, justify=justify, no_wrap=True)
+    for code in CONTRACTS:
+        mine = [r for r in rows if r.index_code == code]
+        if not mine:
+            continue
+        differ = [r for r in mine if r.differs]
+        flips = [r for r in differ if r.change is None]
+        moves = [r for r in differ if r.change is not None]
+        largest = max(moves, key=lambda r: abs(r.change), default=None)
+        table.add_row(
+            code,
+            str(len(mine)),
+            str(len(differ)),
+            str(len(flips)),
+            f"{statistics.median(abs(r.change) for r in moves):.1%}" if moves else "--",
+            f"{largest.change:+.1%} ({largest.index_date})" if largest else "--",
+        )
+    console.print(
+        Panel(
+            f"[bold]methodology {version}[/] against fixings {baseline_label}"
+            "\n[dim]differ = moved by more than half a cent, or publishes on one side only (a flip)[/]",
+            border_style="cyan",
+            expand=False,
+        )
+    )
+    console.print(table)
+
+    if days:
+        detail = Table(box=box.SIMPLE_HEAD, header_style="bold", pad_edge=False)
+        for column, justify in (
+            ("index", "left"), ("date", "left"), ("published under", "left"),
+            ("baseline", "right"), (version, "right"), ("move", "right"),
+        ):
+            detail.add_column(column, justify=justify, no_wrap=True)
+        for r in rows:
+            if not r.differs:
+                continue
+            detail.add_row(
+                r.index_code, r.index_date, r.published_version,
+                _fmt(r.baseline) if r.baseline is not None else "withheld",
+                _fmt(r.recomputed) if r.recomputed is not None else "withheld",
+                f"{r.change:+.1%}" if r.change is not None else "flip",
+            )
+        console.print(detail)
+
+
 def estimate_for_dial(index_code: str, quotes, methodology):
     from .estimator import estimate as run_estimate
 
