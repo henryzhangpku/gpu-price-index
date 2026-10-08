@@ -523,6 +523,82 @@ comparison was about.
 
 ---
 
+## 13. GIX-H100's early-October rise was composition, not the market
+
+Between 29 September and 1 October 2026 `GIX-H100` went from **$3.14 to
+$4.10** (+31%) and stayed between $3.64 and $4.08 for the next week. The rate
+cards behind it did not move. Every number below reproduces from the archived
+snapshots with `uv run gpuidx weights GIX-H100 <date>` and
+`uv run gpuidx screen GIX-H100 <date>`.
+
+**Nine of the twelve continuing contributors quoted the same price on every
+day from 28 September to 7 October.** Lambda $4.01, DigitalOcean $4.06,
+Hyperstack $3.20, IMWT $3.25, Massed Compute $3.52, Denvr $2.50, Latitude
+$2.30, RunPod $3.22, AWS $6.88. Voltage Park moved three cents. DataCrunch
+drifted up about 1% a day ($3.38 on 28 September, $3.66 on 7 October). The weighted mean of those continuing rate
+cards, with Vast.ai and Paperspace removed, was $3.291 on 29 September and
+$3.298 on 1 October, and stayed in $3.24-$3.36 through 8 October.
+
+**Two things changed, and neither was a price.** The 29 Sep to 1 Oct move of
++$0.961 splits, adding one effect at a time, as:
+
+| step | effect on the fixing |
+|---|---|
+| continuing rate cards (everyone except Vast.ai and Paperspace) | +$0.007 |
+| Vast.ai's book median, $2.21 to $5.76 | +$0.489 |
+| Paperspace admitted by the outlier screen, at an unchanged $7.48 | +$0.465 |
+| **total** | **+$0.961** |
+
+*Paperspace entered without repricing.* It quoted $7.478 throughout and was
+screened at 3.0-3.5 robust sigma every day through 30 September. On 1 October
+Vast.ai's vote moved from the low tail to the high side, which raised the
+panel MAD from 0.768 to 1.019; the same $7.478 then sat at 2.62 sigma and was
+kept, as a tier-1 input at full weight. This is finding #1 again -- a fixed
+price crossing a threshold because the panel around it moved -- and it added
+about $0.47 to every fixing from 1 October on.
+
+*Vast.ai's move was one machine, not a market.* Of 19-47 Vast.ai H100 rows a
+day, only 3-16 survive normalisation (the rest are non-US or H100 NVL). On
+1 October three of the five survivors were one machine (host 260094, machine
+57753) listed at 1, 2 and 4 GPUs for $6.26/GPU-hour, and it set the median. On
+6 October it was the *only* machine left, so Vast.ai's whole tier-1 vote was
+one host's ask. On 8 October the same machine asked $10.26 and was screened,
+which is why the fixing fell back to $3.91 with Paperspace still in. The
+cheapest surviving US machines on 30 September and 1, 2 and 5 October were
+$2.21, $2.46, $2.46 and $1.60 -- the cheap end of the book did not reprice;
+it thinned out, and on 6 and 8 October there was nothing else left to quote.
+
+**Why the book floor did not catch it.** The floor (four machines, three
+hosts) is counted over a venue's whole book for the index *before*
+normalisation, so it counted German, Czech and Dutch machines and NVL cards
+that can never price `GIX-H100`. On 6 October the book passed the floor at 11
+machines and 10 hosts while the population actually priced was one machine on
+one host. The floor is measured on the wrong population.
+
+**A second defect found on the way: the region screen admits Australia and
+Russia.** `_region_ok` matches US tokens as substrings, and `"us"` is a
+substring of `"australia"` and `"russia"`. Across the archive 81 Vast.ai rows
+from `Australia, AU` and 17 from `Russia, RU` were admitted as US capacity.
+They were cheap, so they held Vast.ai's US median down; recomputing without
+them moves `GIX-H100` by up to +32% (10 September) and `GIX-B200` by +10%
+(14 September). The October rise is partly the same thing seen from the other
+side: Australian and Russian H100 rows were present in every snapshot
+through 29 September and in none from 30 September, and the one expensive US
+machine was what was left.
+
+Neither defect is patched here. Both fixes (count the floor after
+normalisation; match region tokens on word boundaries) change published
+values, so they belong in a methodology version, and every historical row will
+keep reproducing under the version it names.
+
+**Plain answer.** The early-October level of about $3.9 is not evidence that
+H100 rental got 25% more expensive. It is the same market priced through a
+different panel: an outlier screen that flipped on an unchanged quote, and a
+marketplace vote that came down to one host. The continuing rate cards say
+H100 on-demand list prices were flat at about $3.3 across the period.
+
+---
+
 ## Reproducing
 
 ```bash
