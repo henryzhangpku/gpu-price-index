@@ -16,11 +16,14 @@ from the section heading it sits under.
   "Spot VM Pricing" tables, each under its own heading.
 
 Prices are per GPU-hour and no node size is stated, so rows are one GPU.
+Where the page prices host vCPUs and RAM as add-ons (late 2023) the GPU
+figure is a component price and is read with ``basis="gpu_component"``.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from ...models import Commitment, PriceKind
 from ..htmltext import cells
@@ -114,4 +117,8 @@ def parse(body: bytes, captured: str, source: str) -> list[RateCardRow]:
                     note=f"${price} per GPU-hour, {'two-column table' if two_column else 'section ' + commitment.value}",
                 )
             )
+    # Late 2023 the page billed host vCPUs and RAM as add-ons ("vCPU | $ 0.01
+    # per GPU/hour"), which makes the GPU figure a component price.
+    if any(c.lower() == "vcpu" and k + 1 < len(cs) and cs[k + 1].startswith("$") for k, c in enumerate(cs)):
+        out = [replace(r, basis="gpu_component", note=r.note + "; host vCPU/RAM billed as add-ons") for r in out]
     return out
