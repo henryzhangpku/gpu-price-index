@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from .archive import append_to_tape, stamp_superseded, write_snapshot
+from .archive import append_to_tape, stamp_superseded, venue_holdouts, write_snapshot
 from .estimator import Estimate, estimate
 from .models import IndexValue, NormalizedQuote, QualityFlag
 from .normalize import prepare_quotes
@@ -131,6 +131,9 @@ def run_daily(
                     "superseded_at": "",
                     # Provenance: the exact inputs this value was computed from.
                     "snapshot": snapshot_path.name if snapshot_path else "",
+                    # Why a marketplace's vote is missing, on the record
+                    # rather than only in the derived database.
+                    "venue_holdouts": venue_holdouts(preparation_flags, v.index_code),
                 }
                 for v in report.values.values()
             ],

@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from .models import RawObservation
+from .models import QualityFlag, RawObservation
 
 SNAPSHOT_DIR = "snapshots"
 SERIES_DIR = "series"
@@ -53,7 +53,16 @@ TAPE_COLUMNS = [
     "superseded_at",
     "revision_reason",
     "snapshot",
+    # From 1.2.0: every marketplace venue whose vote the population floor
+    # dropped from this index, with the priced counts that failed it, joined
+    # by " | ". Blank when nothing was held out, and blank on every row
+    # written before the column existed -- those rows never recorded it.
+    "venue_holdouts",
 ]
+
+#: Separator between hold-outs in ``venue_holdouts``. Not a semicolon, which
+#: the reasons themselves use.
+HOLDOUT_SEPARATOR = " | "
 
 
 def _stamp(when: datetime) -> str:
@@ -111,6 +120,15 @@ def list_snapshots(root: Path) -> list[Path]:
 # -- the tape --------------------------------------------------------------
 
 
+def venue_holdouts(flags: list[QualityFlag], index_code: str) -> str:
+    """The tape's ``venue_holdouts`` cell for one index: each floor hold-out, joined."""
+    return HOLDOUT_SEPARATOR.join(
+        f.detail
+        for f in flags
+        if f.code == "book_population_floor" and f.index_code == index_code
+    )
+
+
 def tape_path(root: Path) -> Path:
     return root / SERIES_DIR / TAPE_NAME
 
@@ -120,6 +138,8 @@ def append_to_tape(root: Path, rows: list[dict]) -> Path:
     path = tape_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     exists = path.exists()
+    if exists:
+        _widen_header(path)
 
     with path.open("a", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=TAPE_COLUMNS, extrasaction="ignore")
@@ -128,6 +148,36 @@ def append_to_tape(root: Path, rows: list[dict]) -> Path:
         for row in rows:
             writer.writerow(row)
     return path
+
+
+def _widen_header(path: Path) -> None:
+    """Add columns appended to ``TAPE_COLUMNS`` since this tape was written.
+
+    Columns are only ever appended, so an older tape's header is a prefix of
+    today's. Appending a wider row under a narrower header would put the new
+    field under no name at all, and the next ``stamp_superseded`` would drop
+    it. So the header is widened first and older rows get the new fields
+    blank: no value, date or reason is touched, which is the same class of
+    rewrite ``stamp_superseded`` already makes.
+    """
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.reader(handle)
+        header = next(reader, None)
+        if header is None or header == TAPE_COLUMNS:
+            return
+        if header != TAPE_COLUMNS[: len(header)]:
+            raise ValueError(
+                f"{path} has columns {header}, which are not a prefix of {TAPE_COLUMNS}; "
+                "refusing to append to a tape this build does not understand"
+            )
+        rows = list(reader)
+
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(TAPE_COLUMNS)
+        pad = [""] * (len(TAPE_COLUMNS) - len(header))
+        for row in rows:
+            writer.writerow(row + pad)
 
 
 def read_tape(root: Path) -> list[dict]:

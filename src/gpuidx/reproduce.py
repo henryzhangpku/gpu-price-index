@@ -32,7 +32,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .archive import SNAPSHOT_DIR, list_snapshots, live_tape_values, read_snapshot, read_tape
+from .archive import (
+    SNAPSHOT_DIR,
+    list_snapshots,
+    live_tape_values,
+    read_snapshot,
+    read_tape,
+    venue_holdouts,
+)
 from .estimator import Estimate, estimate
 from .normalize import prepare_quotes
 from .spec import CONTRACTS, CURRENT_METHODOLOGY, Gates, Methodology, methodology_for
@@ -210,12 +217,31 @@ def verify(root: Path, gates: Gates | None = None) -> VerifyReport:
             cache[name] = read_snapshot(available[name]).observations
         observations = cache[name]
 
-        quotes, _ = prepare_quotes(observations, methodology)
+        quotes, prep_flags = prepare_quotes(observations, methodology)
         relevant = [q for q in quotes if q.index_code == index_code]
         recomputed = estimate(index_code, relevant, methodology)
 
         published_value = _as_float(row["value"])
         recomputed_value = recomputed.value if recomputed.passed else None
+
+        # From 1.2.0 the tape records which marketplace votes the population
+        # floor dropped. That record is checked like the value: a hold-out
+        # the archive no longer supports is as much a mismatch as a price.
+        if gates_override is None and methodology.gates.book_floor_basis == "priced":
+            recorded = (row.get("venue_holdouts") or "").strip()
+            derived = venue_holdouts(prep_flags, index_code)
+            if recorded != derived:
+                report.mismatches.append(
+                    Mismatch(
+                        index_code,
+                        index_date,
+                        published_value,
+                        recomputed_value,
+                        f"venue hold-outs differ: tape says {recorded or 'none'!r}, "
+                        f"archive gives {derived or 'none'!r}",
+                    )
+                )
+                continue
 
         if published_value is None and recomputed_value is None:
             report.matched += 1
