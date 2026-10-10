@@ -204,3 +204,8 @@ GIX-H200,2026-10-09,0,published,3.8547963999999997,5,13,0.26153125899136825,,1.2
 GIX-A100,2026-10-09,0,withheld,,10,53,0.4853033956371352,dispersion: 0.485 against ceiling 0.45,1.2.0,2026-10-09T14:25:52.652693Z,,,2026-10-09T142552Z.jsonl.gz,
 GIX-B200,2026-10-09,0,published,6.716185673170834,6,31,0.36236358955220693,,1.2.0,2026-10-09T14:25:52.653729Z,,,2026-10-09T142552Z.jsonl.gz,
 GIX-MI300X,2026-10-09,0,withheld,,1,2,,min_providers: 1 of 4 required; min_observations: 2 of 8 required; dispersion: not computable with fewer than 3 providers,1.2.0,2026-10-09T14:25:52.655480Z,,,2026-10-09T142552Z.jsonl.gz,
+GIX-H100,2026-10-10,0,published,3.3864238842553194,11,34,0.25622332008115006,,1.2.0,2026-10-10T14:20:44.556146Z,,,2026-10-10T142044Z.jsonl.gz,
+GIX-H200,2026-10-10,0,published,3.8547963999999997,5,13,0.26153125899136825,,1.2.0,2026-10-10T14:20:44.557739Z,,,2026-10-10T142044Z.jsonl.gz,vastai held out of GIX-H200: 2 distinct machines of 4 required across 4 priced rows after the region screen and restatement; a median over that few sellers is one seller's rate card wearing a marketplace's name
+GIX-A100,2026-10-10,0,published,1.8379775179368627,9,60,0.3687244433251761,,1.2.0,2026-10-10T14:20:44.559453Z,,,2026-10-10T142044Z.jsonl.gz,
+GIX-B200,2026-10-10,0,published,6.716185673170834,6,40,0.36236358955220693,,1.2.0,2026-10-10T14:20:44.560252Z,,,2026-10-10T142044Z.jsonl.gz,
+GIX-MI300X,2026-10-10,0,withheld,,1,2,,min_providers: 1 of 4 required; min_observations: 2 of 8 required; dispersion: not computable with fewer than 3 providers,1.2.0,2026-10-10T14:20:44.562499Z,,,2026-10-10T142044Z.jsonl.gz,
