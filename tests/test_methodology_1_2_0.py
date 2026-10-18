@@ -141,7 +141,10 @@ def test_every_archived_region_string_changes_reading_only_for_australia_and_rus
         return any(token in blob for token in US_REGION_TOKENS)
 
     changed = {r for r in regions if legacy(r) != region_is_us(r)}
-    assert changed == {"Australia, AU", "Russia, RU"}
+    # The same defect, met again in the 2026-10-18 capture: 1.1.0 read the "IL" of
+    # Israel as Illinois. Every entry here must be a non-US region 1.1.0 admitted.
+    assert changed == {"Australia, AU", "Russia, RU", "IL, Jerusalem"}
+    assert not any(region_is_us(r) for r in changed)
 
 
 # -- defect 2: the book floor ------------------------------------------------
