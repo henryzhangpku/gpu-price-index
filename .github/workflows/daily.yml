@@ -45,12 +45,30 @@ jobs:
         run: uv sync --frozen
 
       - name: Lint
+        id: lint
         run: uvx ruff check src tests
 
       - name: Run tests
+        id: tests
         # A methodology change that breaks its own tests must not reach the
         # tape. The gates protect against bad data; this protects against bad code.
         run: uv run pytest -q
+
+      - name: Keep the day's raw prices when the code gate fails
+        # A code failure must stop publication, not collection. 18-27 Sep 2026
+        # the lint gate failed for ten days and, because collection only happens
+        # inside publish, those days' prices were never captured. This saves the
+        # raw observations to unpublished/snapshots/, which nothing that builds,
+        # verifies or serves the index reads, so a later restatement can decide
+        # what to do with them. The job still fails.
+        if: failure() && (steps.lint.outcome == 'failure' || steps.tests.outcome == 'failure')
+        run: |
+          uv run python -c "from pathlib import Path; from gpuidx.archive import write_snapshot; from gpuidx.providers import collect_all; print(write_snapshot(Path('unpublished'), collect_all().observations))"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add unpublished
+          git commit -m "Unpublished capture for $(date -u +%F): code gate failed, nothing published"
+          git push
 
       - name: Rebuild working state from the archive
         # Restores prior runs and fixings so the level-shift, provider-dropout,
