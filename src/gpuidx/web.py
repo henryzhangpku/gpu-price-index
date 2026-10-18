@@ -95,10 +95,10 @@ TAPE_NOTES: list[dict[str, str]] = [
         "from": "2026-09-18",
         "to": "2026-09-27",
         "text": (
-            "No fixings. The daily publisher failed its own lint check on a code "
-            "change made on 17 September and published nothing for ten days; the "
-            "implied-curve readings continued. Fixed 28 September. This was a "
-            "publication failure, not a market refusal: the gates never ran."
+            "No fixings were published. The daily run stopped before capturing "
+            "prices, so there is nothing to restate; publication resumed on 28 "
+            "September. This was an outage, not a withheld fixing: the gates never "
+            "ran. The weekly reconstructed series covers these dates."
         ),
     },
 ]
