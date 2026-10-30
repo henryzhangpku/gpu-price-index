@@ -1,0 +1,46 @@
+{
+ "read_at": "2026-10-30T14:27:16+00:00",
+ "open_span": 0.25,
+ "ladders": [
+  {
+   "tenor": "end Sep 2026",
+   "settles": "2026-10-01",
+   "source_index": "unknown",
+   "expected": null,
+   "dispersion": null,
+   "book_sum": 0,
+   "tail_mass": null,
+   "volume": 0,
+   "withheld": true,
+   "refusals": [
+    "no open brackets"
+   ]
+  },
+  {
+   "tenor": "end Oct 2026",
+   "settles": "2026-11-01",
+   "source_index": "Ornn H100 Index",
+   "expected": 2.855631276901004,
+   "dispersion": 0.18471036268819602,
+   "book_sum": 1.0455,
+   "tail_mass": 0.19368723098995697,
+   "volume": 54449.069735000005,
+   "withheld": false,
+   "refusals": []
+  },
+  {
+   "tenor": "end 2026",
+   "settles": "2027-01-01",
+   "source_index": "Ornn H100 Index",
+   "expected": 2.851730179588261,
+   "dispersion": 0.8870520445483807,
+   "book_sum": 1.1415,
+   "tail_mass": 0.1971090670170828,
+   "volume": 77537.65670600001,
+   "withheld": true,
+   "refusals": [
+    "book sums to 1.141; a mutually exclusive, exhaustive ladder should sum to 1.00, so 14% of this is spread"
+   ]
+  }
+ ]
+}
