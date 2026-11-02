@@ -548,3 +548,13 @@ a plausible market — which is precisely how the MAD-zero defect survived. The
 property tests generate the market instead, including the shapes nobody writes
 down by hand: exact ties across every provider, prices spanning six orders of
 magnitude, and adversaries quoting anything at all.
+
+---
+
+## Author
+
+**Henry Zhang** — quantitative engineer; fifteen years building research platforms and production trading systems, including eight years at BlackRock and two at PIMCO.
+
+[LinkedIn](https://www.linkedin.com/in/henryzhang99/) · [GitHub](https://github.com/henryzhangpku) · [Substack](https://henryzhang.substack.com) · [officialhenryzhang.com](https://www.officialhenryzhang.com)
+
+More work: [Autonomous Quant Researcher](https://github.com/henryzhangpku/autonomous-quant-researcher) (an LLM proposes, trusted code decides) · [research2prod](https://github.com/henryzhangpku/research2prod) (research code that is already production code) · [mft-engine](https://github.com/henryzhangpku/mft-engine) (one Rust code path for backtest and live) · [all repositories](https://github.com/henryzhangpku?tab=repositories)
