@@ -99,7 +99,7 @@ of the work in a benchmark is deciding what does not count.
 
 ```mermaid
 flowchart TB
-    SRC["~20 clouds · 5 adapters"] --> OBS["raw observation"]
+    SRC["~20 clouds · 6 adapters"] --> OBS["raw observation"]
     OBS -. "written first" .-> SNAP[("snapshot · immutable")]
 
     OBS --> A{"administered?"}
@@ -166,7 +166,7 @@ which, and where the two impure edges are.
 ```mermaid
 flowchart TB
     subgraph IO["touches the world"]
-        PROV["providers/ · the only network calls<br/>base · curated · datacrunch · runpod · shadeform · vastai"]
+        PROV["providers/ · the only network calls<br/>base · curated · datacrunch · runcrate · runpod · shadeform · vastai"]
         STORE["store.py · the only database"]
     end
     subgraph PURE["pure: same inputs, same answer, no clock and no socket"]
@@ -395,6 +395,7 @@ All unauthenticated public endpoints. No scraping, no credentials.
 | [Vast.ai](https://console.vast.ai/api/v0/bundles/) | Marketplace offers with host reliability — the only executable prices here | 1 / 2 |
 | [RunPod](https://api.runpod.io/graphql) | Secure and community rate cards on the same hardware | 2 |
 | [DataCrunch](https://api.datacrunch.io/v1/instance-types) | On-demand and spot on identical hardware | 2 |
+| [Runcrate](https://www.runcrate.ai/api/gpu-pricing) | On-demand B200 and H200 per-GPU rates, with a live stock count | 2 |
 | `data/curated_rate_cards.json` | Hyperscaler list prices, hand-maintained | 3 |
 
 Curated entries carry an `as_of` date, a `source_url`, and a `source_type`

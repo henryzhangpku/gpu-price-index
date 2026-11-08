@@ -8,6 +8,7 @@ from ..models import QualityFlag, RawObservation
 from .base import Provider, make_client
 from .curated import Curated
 from .datacrunch import DataCrunch
+from .runcrate import Runcrate
 from .runpod import RunPod
 from .shadeform import Shadeform
 from .vastai import VastAI
@@ -16,7 +17,7 @@ __all__ = ["CollectionRun", "Provider", "collect_all", "default_providers"]
 
 
 def default_providers() -> list[Provider]:
-    return [Shadeform(), RunPod(), VastAI(), DataCrunch(), Curated()]
+    return [Shadeform(), RunPod(), VastAI(), DataCrunch(), Runcrate(), Curated()]
 
 
 @dataclass
