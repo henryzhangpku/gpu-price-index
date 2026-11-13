@@ -144,7 +144,7 @@ def test_every_archived_region_string_changes_reading_only_for_australia_and_rus
     # The same defect, met again in the 2026-10-18 capture: 1.1.0 read the "IL" of
     # Israel as Illinois. And again in the 2026-10-23 capture: 1.1.0 read the "us" in
     # Austria. Every entry here must be a non-US region 1.1.0 admitted.
-    assert changed == {"Australia, AU", "Russia, RU", "IL, Jerusalem", "Austria, AT"}
+    assert changed == {"Australia, AU", "Russia, RU", "IL, Jerusalem", "Austria, AT", "JP, Fukushima"}
     assert not any(region_is_us(r) for r in changed)
 
 
