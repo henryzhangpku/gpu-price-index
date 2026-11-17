@@ -245,7 +245,7 @@ pattern of preferring transactions to quotes and quotes to judgement.
 | Tier | Definition | Weight | Sources here |
 |---|---|---|---|
 | 1 — executable | Offer a buyer can transact against right now, with observable capacity | 1.00 | Vast.ai offers above a reliability floor; Shadeform SKUs with confirmed live regions |
-| 2 — rate card | Published on-demand price, capacity not confirmed at capture | 0.60 | RunPod, DataCrunch, Shadeform SKUs without live regions |
+| 2 — rate card | Published on-demand price, capacity not confirmed at capture | 0.60 | RunPod, DataCrunch, Runcrate, Shadeform SKUs without live regions |
 | 3 — judgement | Curated or carried-forward price standing in for an unobservable market | 0.25 | Hyperscaler list prices |
 
 A value resting entirely on tier 2 and 3 is published but flagged
