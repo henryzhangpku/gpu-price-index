@@ -1,0 +1,46 @@
+{
+ "read_at": "2026-11-18T14:24:23+00:00",
+ "open_span": 0.25,
+ "ladders": [
+  {
+   "tenor": "end Sep 2026",
+   "settles": "2026-10-01",
+   "source_index": "unknown",
+   "expected": null,
+   "dispersion": null,
+   "book_sum": 0,
+   "tail_mass": null,
+   "volume": 0,
+   "withheld": true,
+   "refusals": [
+    "no open brackets"
+   ]
+  },
+  {
+   "tenor": "end Oct 2026",
+   "settles": "2026-11-01",
+   "source_index": "unknown",
+   "expected": null,
+   "dispersion": null,
+   "book_sum": 0,
+   "tail_mass": null,
+   "volume": 0,
+   "withheld": true,
+   "refusals": [
+    "no open brackets"
+   ]
+  },
+  {
+   "tenor": "end 2026",
+   "settles": "2027-01-01",
+   "source_index": "Ornn H100 Index",
+   "expected": 3.045121648460775,
+   "dispersion": 0.6755074392592589,
+   "book_sum": 1.007,
+   "tail_mass": 0.12859980139026814,
+   "volume": 92742.252964,
+   "withheld": false,
+   "refusals": []
+  }
+ ]
+}
